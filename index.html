@@ -1,0 +1,1838 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendario SINAC - Gestión de Actividades</title>
+    <!-- AÑADIDO PARA PWA -->
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#0a1214">
+    <link rel="apple-touch-icon" href="./icon-192.png">
+    
+    <!-- Cargar Babel para entender React (versión específica para compatibilidad) -->
+    <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+    
+    <!-- xlsx-js-style para exportación a XLSX con estilos -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+    
+    <!-- Mapa de Importaciones para que funcionen las librerías desde la nube -->
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.300.0",
+        "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
+      }
+    }
+    </script>
+
+    <style>
+        body { margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; background-color: #0a1214; color: #e0f0f0; overflow: hidden; }
+        #root { height: 100vh; display: flex; flex-direction: column; }
+        
+        /* Estilos para Scrollbars oscuros */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0d1a1f; }
+        ::-webkit-scrollbar-thumb { background: #1e3a3a; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #2a4a4a; }
+        
+        /* Reset básico */
+        * { box-sizing: border-box; }
+        button, input, select, textarea { font-family: inherit; }
+        
+        /* Animación de pulso para actividad en curso */
+        @keyframes pulseGlow {
+          0%, 100% { box-shadow: 0 0 0 2px #2dd4bf, 0 0 4px #2dd4bf44; }
+          50% { box-shadow: 0 0 0 2px #2dd4bf, 0 0 10px #2dd4bf66; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- CÓDIGO DE LA APLICACIÓN -->
+    <script type="text/babel" data-type="module" data-presets="react">
+        import React, { useState, useEffect, useMemo, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+          ChevronLeft, ChevronRight, Clock, CheckCircle, PauseCircle, PlayCircle, 
+          Plus, X, Menu, Trash2, Filter, AlertTriangle, Settings, Edit2,
+          Bell, FileText, FileSpreadsheet, Calendar, Flag, Leaf, LogOut,
+          Sun, Star, Repeat, GripVertical, Search, Car, CreditCard, Database, EyeOff,
+          Moon, Wifi, WifiOff, Upload, Download, ArrowRightCircle, Save, CalendarPlus,
+          DollarSign, Lock, Unlock, TrendingUp, AlertCircle, PieChart, BarChart3, MapPin,
+          User, Phone, Map, ExternalLink, Copy
+        } from 'lucide-react';
+
+        // --- FIREBASE IMPORTS ---
+        import { initializeApp } from 'firebase/app';
+        import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+        import { getFirestore, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, enableIndexedDbPersistence, query, writeBatch, where, getDocs } from 'firebase/firestore';
+
+        // --- DATA SEMILLA (CONSTANTES) ---
+        const PAYMENTS_2026 = [
+          { date: '2026-01-13', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-01-23', name: 'Salario Escolar', type: 'payment', special: true }, { date: '2026-01-28', name: 'Pago Salario IIQ', type: 'payment' },
+          { date: '2026-02-13', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-02-25', name: 'Pago Salario IIQ', type: 'payment' },
+          { date: '2026-03-13', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-03-26', name: 'Pago Salario IIQ', type: 'payment' },
+          { date: '2026-04-14', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-04-27', name: 'Pago Salario IIQ', type: 'payment' },
+          { date: '2026-05-14', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-05-27', name: 'Pago Salario IIQ', type: 'payment' },
+          { date: '2026-06-12', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-06-26', name: 'Pago Salario IIQ', type: 'payment' },
+          { date: '2026-07-14', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-07-28', name: 'Pago Salario IIQ', type: 'payment' },
+          { date: '2026-08-14', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-08-26', name: 'Pago Salario IIQ', type: 'payment' },
+          { date: '2026-09-14', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-09-28', name: 'Pago Salario IIQ', type: 'payment' },
+          { date: '2026-10-14', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-10-28', name: 'Pago Salario IIQ', type: 'payment' },
+          { date: '2026-11-13', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-11-26', name: 'Pago Salario IIQ', type: 'payment' },
+          { date: '2026-12-04', name: 'Aguinaldo', type: 'payment', special: true }, { date: '2026-12-14', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-12-24', name: 'Pago Salario IIQ', type: 'payment' }
+        ];
+
+        const HOLIDAYS_CR_2026 = [
+          { date: '2026-01-01', name: 'Año Nuevo', type: 'holiday', description: 'Inicio de año calendario.', legalNorm: 'Código de Trabajo' },
+          { date: '2026-04-09', name: 'Jueves Santo', type: 'holiday', description: 'Feriado religioso.', legalNorm: 'Código de Trabajo' },
+          { date: '2026-04-10', name: 'Viernes Santo', type: 'holiday', description: 'Feriado religioso.', legalNorm: 'Código de Trabajo' },
+          { date: '2026-04-11', name: 'Batalla de Rivas', type: 'holiday', description: 'Conmemoración de la gesta heroica de 1856.', legalNorm: 'Ley 6996' },
+          { date: '2026-05-01', name: 'Día del Trabajador', type: 'holiday', description: 'Día Internacional de los Trabajadores.', legalNorm: 'Código de Trabajo' },
+          { date: '2026-07-25', name: 'Anexión de Nicoya', type: 'holiday', description: 'Incorporación de Guanacaste a Costa Rica.', legalNorm: 'Ley 6996' },
+          { date: '2026-08-02', name: 'Virgen de los Ángeles', type: 'holiday', description: 'Patrona de Costa Rica.', legalNorm: 'Ley 6996' },
+          { date: '2026-08-15', name: 'Día de la Madre', type: 'holiday', description: 'Celebración nacional.', legalNorm: 'Ley 6996' },
+          { date: '2026-09-15', name: 'Independencia Patria', type: 'holiday', description: '197 años de vida independiente.', legalNorm: 'Ley 6996' },
+          { date: '2026-12-01', name: 'Abolición del Ejército', type: 'holiday', description: 'Hito histórico de paz.', legalNorm: 'Ley 9803' },
+          { date: '2026-12-25', name: 'Navidad', type: 'holiday', description: 'Celebración navideña.', legalNorm: 'Código de Trabajo' }
+        ];
+
+        const EFEMERIDES_2026 = [
+          { date: '2026-02-02', name: 'Día de los Humedales', type: 'efemeride', category: 'ambiental', description: 'Conciencia sobre la importancia de los ecosistemas húmedos.' },
+          { date: '2026-03-21', name: 'Día de los Bosques', type: 'efemeride', category: 'ambiental', description: 'Protección de la cobertura forestal.' },
+          { date: '2026-03-22', name: 'Día Mundial del Agua', type: 'efemeride', category: 'ambiental', description: 'Gestión sostenible de los recursos hídricos.' },
+          { date: '2026-04-22', name: 'Día de la Tierra', type: 'efemeride', category: 'ambiental', description: 'Cuidado del planeta.' },
+          { date: '2026-06-05', name: 'Día del Ambiente', type: 'efemeride', category: 'ambiental', description: 'Acción global por el medio ambiente.' },
+          { date: '2026-03-20', name: 'Equinoccio de Marzo', type: 'astro', time: '08:46', description: 'El Sol cruza el ecuador celeste hacia el norte.' },
+          { date: '2026-06-21', name: 'Solsticio de Junio', type: 'astro', time: '03:24', description: 'El Sol alcanza su máxima declinación norte.' },
+          { date: '2026-03-03', name: 'Eclipse Lunar Total', type: 'astro_event', time: '02:45 - 06:15', description: 'Visibilidad MUY ALTA.', location: 'Guanacaste, Nicoya' },
+          { date: '2026-08-12', name: 'Lluvia de Meteoros Perseidas', type: 'astro_event', time: 'Pico 00:30', description: 'Visibilidad MEDIA-ALTA.', location: 'Nicoya norte' }
+        ];
+
+        const MOON_PHASES_2026 = [
+          { date: '2026-01-03', name: 'Luna Llena', type: 'moon', icon: '🌕' }, { date: '2026-01-10', name: 'Cuarto Menguante', type: 'moon', icon: '🌗' }, { date: '2026-01-18', name: 'Luna Nueva', type: 'moon', icon: '🌑' }, { date: '2026-01-25', name: 'Cuarto Creciente', type: 'moon', icon: '🌓' },
+          { date: '2026-02-01', name: 'Luna Llena', type: 'moon', icon: '🌕' }, { date: '2026-02-17', name: 'Luna Nueva', type: 'moon', icon: '🌑' },
+          { date: '2026-03-03', name: 'Luna Llena', type: 'moon', icon: '🌕' }, { date: '2026-03-18', name: 'Luna Nueva', type: 'moon', icon: '🌑' },
+          { date: '2026-04-01', name: 'Luna Llena', type: 'moon', icon: '🌕' }, { date: '2026-04-17', name: 'Luna Nueva', type: 'moon', icon: '🌑' },
+          { date: '2026-05-01', name: 'Luna Llena', type: 'moon', icon: '🌕' }, { date: '2026-05-16', name: 'Luna Nueva', type: 'moon', icon: '🌑' }, { date: '2026-05-31', name: 'Luna Llena', type: 'moon', icon: '🌕' },
+          { date: '2026-06-14', name: 'Luna Nueva', type: 'moon', icon: '🌑' }, { date: '2026-06-29', name: 'Luna Llena', type: 'moon', icon: '🌕' }
+        ];
+
+        const SUBTIPOS_FORESTALES = ['Permiso Pequeño', 'Inventario Forestal', 'Certificado de Origen', 'Plan de Manejo', 'Determinación de Bosque', 'Determinación de Humedal', 'Clasificación de Predio', 'Visado', 'Certificación de plano', 'Régimen Forestal', 'Denuncia Ambiental', 'Análisis de Proyecto', 'Otro'];
+        const SUBTIPOS_RESOLUCION = ['Permiso Pequeño', 'Inventario Forestal', 'Certificado de Origen', 'Plan de Manejo', 'Régimen Forestal', 'Visado de Plano'];
+
+        const DEFAULT_ACTIVITY_TYPES = [
+          { id: 1, name: 'Redacción de Informe', color: '#2ECC71', subtypes: [...SUBTIPOS_FORESTALES, 'SICAF - PP', 'SIFAC - IF', 'SICAF - CO', 'SICAF - Informe técnico PyG', 'SICAF - Informe analista PyG', 'Informe de patio', 'Coordinación para entrega PyG'], fields: ['informe', 'expediente'], logistics: true },
+          { id: 2, name: 'Redacción de Resolución', color: '#27AE60', subtypes: SUBTIPOS_RESOLUCION, fields: ['informe', 'expediente'] },
+          { id: 3, name: 'Inspección', color: '#E67E22', subtypes: [...SUBTIPOS_FORESTALES, 'Inventario de patio', 'Supervisión'], fields: ['informe', 'expediente', 'asistentes', 'lugar'], logistics: true },
+          { id: 4, name: 'Revisión de Correos', color: '#3498DB', subtypes: [], fields: [] },
+          { id: 5, name: 'Comunicaciones', color: '#9B59B6', subtypes: ['Llamada telefónica', 'Mensaje de Whatsapp'], fields: ['nombre', 'cedula', 'tema'] },
+          { id: 6, name: 'Revisión de Documentos', color: '#1ABC9C', subtypes: [], fields: ['informe', 'expediente'] },
+          { id: 7, name: 'Manejo de Expediente', color: '#16A085', subtypes: [], fields: ['informe', 'expediente'] },
+          { id: 8, name: 'Gestión Administrativa', color: '#F39C12', subtypes: ['Viáticos', 'Informe PP', 'Informe SEMEC', 'Programación', 'Informe labores', 'Control interno'], fields: [] },
+          { id: 9, name: 'Recursos Humanos', color: '#E74C3C', subtypes: ['Boleta vacaciones', 'Evaluación desempeño', 'Otras'], fields: ['boleta'] },
+          { id: 10, name: 'Colaboración', color: '#8E44AD', subtypes: [], fields: ['informe', 'expediente', 'asistentes', 'lugar'], logistics: true },
+          { id: 11, name: 'Reunión', color: '#2980B9', subtypes: [], fields: ['tema', 'minuta', 'expediente', 'asistentes', 'lugar'], logistics: true },
+          { id: 12, name: 'Capacitación', color: '#D35400', subtypes: [], fields: ['tema', 'lugar'], logistics: true },
+          { id: 13, name: 'Otro', color: '#7F8C8D', subtypes: [], fields: ['informe', 'expediente', 'asistentes'], logistics: true },
+          { id: 14, name: 'Vacaciones', color: '#00CED1', subtypes: [], fields: ['boleta'] },
+          { id: 15, name: 'Licencia Ocasional', color: '#20B2AA', subtypes: [], fields: ['boleta'] },
+          { id: 16, name: 'Cita Médica', color: '#FF6B6B', subtypes: ['Ebais - Medicina general','Ebais - Odontología','Retiro de medicamentos','IAFA - Medicina','IAFA - Psicología','CCSS - Psicología','CCSS - Psiquiatría','Medicina Privada','Emergencias','Vascular periférico','Otra'], fields: [] },
+          { id: 17, name: 'Incapacidad', color: '#C0392B', subtypes: [], fields: [] },
+          { id: 18, name: 'Cumpleaños', color: '#FF69B4', subtypes: [], fields: ['nombreCumple'] },
+          { id: 19, name: 'Receso', color: '#A0522D', subtypes: ['Café', 'Almuerzo', 'Pausa activa', 'Otro'], fields: [] },
+          { id: 20, name: 'Trabajo de oficina', color: '#4A90D9', subtypes: [], fields: [] }
+        ];
+        
+        // --- MONTOS POR DEFECTO ACTUALIZADOS ---
+        const DEFAULT_VIATICUM_RATES = { breakfast: 4200, lunch: 5600, dinner: 5600, lodging: 25000 };
+        const DEFAULT_MONTHLY_BUDGET = 16800;
+
+        // --- TARIFAS DE HOSPEDAJE POR DEFECTO (CARGADAS DESDE ARCHIVO) ---
+        const DEFAULT_LODGING_RATES = [
+          { provincia: 'San José', canton: 'Puriscal', distritos: ['Barbacoas', 'Candelarita', 'Chires', 'Desamparaditos', 'Grifo Alto', 'Mercedes Sur', 'San Antonio', 'San Rafael', 'Santiago'], monto: 16100 },
+          { provincia: 'Alajuela', canton: 'Atenas', distritos: ['Atenas', 'Concepción', 'Escobal', 'Jesús', 'Mercedes', 'San Isidro', 'San José', 'Santa Eulalia'], monto: 20100 },
+          { provincia: 'Puntarenas', canton: 'Garabito', distritos: ['Jacó', 'Lagunillas', 'Tárcoles'], monto: 25400 },
+          { provincia: 'Puntarenas', canton: 'Quepos', distritos: ['Quepos', 'Naranjito', 'Savegre'], monto: 25400 }
+        ];
+
+        // --- CÓDIGOS PP POR DEFECTO ---
+        const DEFAULT_PP_CODES = [
+            { code: 'PPI-17-E18', description: 'Consolidar el rol de las OSR como la unidad territorial de gestión y uso sostenible de los recursos de la biodiversidad en los paisajes (urbano, rural y marino-costero) del país.' }
+        ];
+
+        // --- DATOS DE UBICACIÓN PARA COSTA RICA ---
+        const PROVINCIAS_CR = [
+          {
+            provincia: 'San José',
+            cantones: [
+              { canton: 'San José', distritos: ['Carmen', 'Merced', 'Hospital', 'Catedral', 'Zapote', 'San Francisco de Dos Ríos', 'Uruca', 'Mata Redonda', 'Pavas', 'Hatillo', 'San Sebastián'] },
+              { canton: 'Escazú', distritos: ['Escazú', 'San Antonio', 'San Rafael'] },
+              { canton: 'Desamparados', distritos: ['Desamparados', 'San Miguel', 'San Juan de Dios', 'San Rafael Arriba', 'San Rafael Abajo', 'San Antonio', 'Frailes', 'Patarrá', 'San Cristóbal', 'Rosario', 'Damas', 'San Rafael', 'Gravilias', 'Los Guido'] },
+              { canton: 'Puriscal', distritos: ['Santiago', 'Mercedes Sur', 'Barbacoas', 'Grifo Alto', 'San Rafael', 'Candelarita', 'Desamparaditos', 'San Antonio', 'Chires'] },
+              { canton: 'Tarrazú', distritos: ['San Marcos', 'San Lorenzo', 'San Carlos'] },
+              { canton: 'Aserrí', distritos: ['Aserrí', 'Tarbaca', 'Vuelta de Jorco', 'San Gabriel', 'Legua', 'Monterrey', 'Salitrillos'] },
+              { canton: 'Mora', distritos: ['Colón', 'Guayabo', 'Tabarcia', 'Piedras Negras', 'Picagres', 'Jaris'] },
+              { canton: 'Goicoechea', distritos: ['Guadalupe', 'San Francisco', 'Calle Blancos', 'Mata de Plátano', 'Ipís', 'Rancho Redondo', 'Purral'] },
+              { canton: 'Santa Ana', distritos: ['Santa Ana', 'Salitral', 'Pozos', 'Uruca', 'Piedades', 'Brasil'] },
+              { canton: 'Alajuelita', distritos: ['Alajuelita', 'San Josecito', 'San Antonio', 'Concepción', 'San Felipe'] },
+              { canton: 'Vázquez de Coronado', distritos: ['San Isidro', 'San Rafael', 'Dulce Nombre de Jesús', 'Patalillo', 'Cascajal'] },
+              { canton: 'Acosta', distritos: ['San Ignacio', 'Guaitil', 'Palmichal', 'Cangrejal', 'Sabanillas'] },
+              { canton: 'Tibás', distritos: ['San Juan', 'Cinco Esquinas', 'Anselmo Llorente', 'León XIII', 'Colima'] },
+              { canton: 'Moravia', distritos: ['San Vicente', 'San Jerónimo', 'La Trinidad'] },
+              { canton: 'Montes de Oca', distritos: ['San Pedro', 'Sabanilla', 'Mercedes', 'San Rafael'] },
+              { canton: 'Turrubares', distritos: ['San Pablo', 'San Pedro', 'San Juan de Mata', 'San Luis', 'Carara'] },
+              { canton: 'Dota', distritos: ['Santa María', 'Jardín', 'Copey'] },
+              { canton: 'Curridabat', distritos: ['Curridabat', 'Granadilla', 'Sánchez', 'Tirrases'] },
+              { canton: 'Pérez Zeledón', distritos: ['San Isidro de El General', 'El General', 'Daniel Flores', 'Rivas', 'San Pedro', 'Platanares', 'Pejibaye', 'Cajón', 'Barú', 'Río Nuevo', 'Páramo', 'La Amistad'] },
+              { canton: 'León Cortés Castro', distritos: ['San Pablo', 'San Andrés', 'Llano Bonito', 'San Isidro', 'Santa Cruz', 'San Antonio'] }
+            ]
+          },
+          {
+            provincia: 'Alajuela',
+            cantones: [
+              { canton: 'Alajuela', distritos: ['Alajuela', 'San José', 'Carrizal', 'San Antonio', 'Guácima', 'San Isidro', 'Sabanilla', 'San Rafael', 'Río Segundo', 'Desamparados', 'Turrúcares', 'Tambor', 'Garita', 'Sarapiquí'] },
+              { canton: 'San Ramón', distritos: ['San Ramón', 'Santiago', 'San Juan', 'Piedades Norte', 'Piedades Sur', 'San Rafael', 'San Isidro', 'Ángeles', 'Alfaro', 'Volio', 'Concepción', 'Zapotal', 'Peñas Blancas', 'San Lorenzo'] },
+              { canton: 'Grecia', distritos: ['Grecia', 'San Isidro', 'San José', 'San Roque', 'Tacares', 'Río Cuarto', 'Puente de Piedra', 'Bolívar'] },
+              { canton: 'San Mateo', distritos: ['San Mateo', 'Desmonte', 'Jesús María', 'Labrador'] },
+              { canton: 'Atenas', distritos: ['Atenas', 'Jesús', 'Mercedes', 'San Isidro', 'Concepción', 'San José', 'Santa Eulalia', 'Escobal'] },
+              { canton: 'Naranjo', distritos: ['Naranjo', 'San Miguel', 'San José', 'Cirrí Sur', 'San Jerónimo', 'San Juan', 'El Rosario', 'Palmitos'] },
+              { canton: 'Palmares', distritos: ['Palmares', 'Zaragoza', 'Buenos Aires', 'Santiago', 'Candelaria', 'Esquipulas', 'La Granja'] },
+              { canton: 'Poás', distritos: ['San Pedro', 'San Juan', 'San Rafael', 'Carrillos', 'Sabana Redonda'] },
+              { canton: 'Orotina', distritos: ['Orotina', 'El Mastate', 'Hacienda Vieja', 'Coyolar', 'La Ceiba'] },
+              { canton: 'San Carlos', distritos: ['Quesada', 'Florencia', 'Buena Vista', 'Aguas Zarcas', 'Venecia', 'Pital', 'La Fortuna', 'La Tigra', 'La Palmera', 'Venado', 'Cutris', 'Monterrey', 'Pocosol', 'Cerro Cortés'] },
+              { canton: 'Zarcero', distritos: ['Zarcero', 'Laguna', 'Tapezco', 'Guadalupe', 'Palmira', 'Zapote', 'Brisas'] },
+              { canton: 'Sarchí', distritos: ['Sarchí Norte', 'Sarchí Sur', 'Toro Amarillo', 'San Pedro', 'Rodríguez'] },
+              { canton: 'Upala', distritos: ['Upala', 'Aguas Claras', 'San José', 'Bijagua', 'Delicias', 'Dos Ríos', 'Yolillal', 'Canalete'] },
+              { canton: 'Los Chiles', distritos: ['Los Chiles', 'Caño Negro', 'El Amparo', 'San Jorge'] },
+              { canton: 'Guatuso', distritos: ['San Rafael', 'Buenavista', 'Cote', 'Katira'] }
+            ]
+          },
+          {
+            provincia: 'Cartago',
+            cantones: [
+              { canton: 'Cartago', distritos: ['Oriental', 'Occidental', 'Carmen', 'San Nicolás', 'Aguacaliente', 'Guadalupe', 'Corralillo', 'Tierra Blanca', 'Dulce Nombre', 'Llano Grande', 'Quebradilla'] },
+              { canton: 'Paraíso', distritos: ['Paraíso', 'Santiago', 'Orosi', 'Cachí', 'Llanos de Santa Lucía'] },
+              { canton: 'La Unión', distritos: ['Tres Ríos', 'San Diego', 'San Juan', 'San Rafael', 'Concepción', 'Dulce Nombre', 'San Ramón', 'Río Azul'] },
+              { canton: 'Jiménez', distritos: ['Juan Viñas', 'Tucurrique', 'Pejibaye'] },
+              { canton: 'Turrialba', distritos: ['Turrialba', 'La Suiza', 'Peralta', 'Santa Cruz', 'Santa Teresita', 'Pavones', 'Tuis', 'Tayutic', 'Santa Rosa', 'Tres Equis', 'La Isabel', 'Chirripó'] },
+              { canton: 'Alvarado', distritos: ['Pacayas', 'Cervantes', 'Capellades'] },
+              { canton: 'Oreamuno', distritos: ['San Rafael', 'Cot', 'Potrero Cerrado', 'Cipreses', 'Santa Rosa'] },
+              { canton: 'El Guarco', distritos: ['El Tejar', 'San Isidro', 'Tobosi', 'Patio de Agua'] }
+            ]
+          },
+          {
+            provincia: 'Heredia',
+            cantones: [
+              { canton: 'Heredia', distritos: ['Heredia', 'Mercedes', 'San Francisco', 'Ulloa', 'Varablanca'] },
+              { canton: 'Barva', distritos: ['Barva', 'San Pedro', 'San Pablo', 'San Roque', 'Santa Lucía', 'San José de la Montaña'] },
+              { canton: 'Santo Domingo', distritos: ['Santo Domingo', 'San Vicente', 'San Miguel', 'Paracito', 'Santo Tomás', 'Santa Rosa', 'Tures', 'Para'] },
+              { canton: 'Santa Bárbara', distritos: ['Santa Bárbara', 'San Pedro', 'San Juan', 'Jesús', 'Santo Domingo', 'Puraba'] },
+              { canton: 'San Rafael', distritos: ['San Rafael', 'San Josecito', 'Santiago', 'Ángeles', 'Concepción'] },
+              { canton: 'San Isidro', distritos: ['San Isidro', 'San José', 'Concepción', 'San Francisco'] },
+              { canton: 'Belén', distritos: ['San Antonio', 'La Ribera', 'La Asunción'] },
+              { canton: 'Flores', distritos: ['San Joaquín', 'Barrantes', 'Llorente'] },
+              { canton: 'San Pablo', distritos: ['San Pablo', 'Rincón de Sabanilla'] },
+              { canton: 'Sarapiquí', distritos: ['Puerto Viejo', 'La Virgen', 'Las Horquetas', 'Llanuras del Gaspar', 'Cureña'] }
+            ]
+          },
+          {
+            provincia: 'Guanacaste',
+            cantones: [
+              { canton: 'Liberia', distritos: ['Liberia', 'Cañas Dulces', 'Mayorga', 'Nacascolo', 'Curubandé'] },
+              { canton: 'Nicoya', distritos: ['Nicoya', 'Mansión', 'San Antonio', 'Quebrada Honda', 'Sámara', 'Nosara', 'Belén de Nosarita'] },
+              { canton: 'Santa Cruz', distritos: ['Santa Cruz', 'Bolsón', 'Veintisiete de Abril', 'Tempate', 'Cartagena', 'Cuajiniquil', 'Diriá', 'Cabo Velas', 'Tamarindo'] },
+              { canton: 'Bagaces', distritos: ['Bagaces', 'Fortuna', 'Mogote', 'Río Naranjo'] },
+              { canton: 'Carrillo', distritos: ['Filadelfia', 'Palmira', 'Sardinal', 'Belén'] },
+              { canton: 'Cañas', distritos: ['Cañas', 'Palmira', 'San Miguel', 'Bebedero', 'Porozal'] },
+              { canton: 'Abangares', distritos: ['Las Juntas', 'Sierra', 'San Juan', 'Colorado'] },
+              { canton: 'Tilarán', distritos: ['Tilarán', 'Quebrada Grande', 'Tronadora', 'Santa Rosa', 'Líbano', 'Tierras Morenas', 'Arenal'] },
+              { canton: 'Nandayure', distritos: ['Carmona', 'Santa Rita', 'Zapotal', 'San Pablo', 'Porvenir', 'Bejuco'] },
+              { canton: 'La Cruz', distritos: ['La Cruz', 'Santa Cecilia', 'La Garita', 'Santa Elena'] },
+              { canton: 'Hojancha', distritos: ['Hojancha', 'Monte Romo', 'Puerto Carrillo', 'Huacas'] }
+            ]
+          },
+          {
+            provincia: 'Puntarenas',
+            cantones: [
+              { canton: 'Puntarenas', distritos: ['Puntarenas', 'Pitahaya', 'Chomes', 'Lepanto', 'Paquera', 'Manzanillo', 'Guacimal', 'Barranca', 'Monte Verde', 'Isla del Coco', 'Cóbano', 'Chacarita', 'Chira', 'Acapulco', 'El Roble', 'Arancibia'] },
+              { canton: 'Esparza', distritos: ['Espíritu Santo', 'San Juan Grande', 'Macacona', 'San Rafael', 'San Jerónimo'] },
+              { canton: 'Buenos Aires', distritos: ['Buenos Aires', 'Volcán', 'Potrero Grande', 'Boruca', 'Pilas', 'Colinas', 'Chánguena', 'Biolley', 'Brunka'] },
+              { canton: 'Montes de Oro', distritos: ['Miramar', 'La Unión', 'San Isidro'] },
+              { canton: 'Osa', distritos: ['Puerto Cortés', 'Palmar', 'Sierpe', 'Bahía Ballena', 'Piedras Blancas', 'Bahía Drake'] },
+              { canton: 'Quepos', distritos: ['Quepos', 'Savegre', 'Naranjito'] },
+              { canton: 'Golfito', distritos: ['Golfito', 'Puerto Jiménez', 'Guaycará', 'Pavón'] },
+              { canton: 'Coto Brus', distritos: ['San Vito', 'Sabalito', 'Aguabuena', 'Limoncito', 'Pittier'] },
+              { canton: 'Parrita', distritos: ['Parrita'] },
+              { canton: 'Corredores', distritos: ['Corredor', 'La Cuesta', 'Canoas', 'Laurel'] },
+              { canton: 'Garabito', distritos: ['Jacó', 'Tárcoles'] }
+            ]
+          },
+          {
+            provincia: 'Limón',
+            cantones: [
+              { canton: 'Limón', distritos: ['Limón', 'Valle La Estrella', 'Río Blanco', 'Matama'] },
+              { canton: 'Pococí', distritos: ['Guápiles', 'Jiménez', 'Rita', 'Roxana', 'Cariari', 'Colorado', 'La Colonia'] },
+              { canton: 'Siquirres', distritos: ['Siquirres', 'Pacuarito', 'Florida', 'Germania', 'El Cairo', 'Alegría'] },
+              { canton: 'Talamanca', distritos: ['Bratsi', 'Sixaola', 'Cahuita', 'Telire'] },
+              { canton: 'Matina', distritos: ['Matina', 'Batán', 'Carrandi'] },
+              { canton: 'Guácimo', distritos: ['Guácimo', 'Mercedes', 'Pocora', 'Río Jiménez', 'Duacari'] }
+            ]
+          }
+        ];
+
+        const FIELD_LABELS = { informe: 'Informe', expediente: 'Expediente', asistentes: 'Asistentes', nombre: 'Nombre', cedula: 'Cédula', tema: 'Tema', boleta: 'Boleta', minuta: 'Minuta', lugar: 'Lugar', nombreCumple: 'Cumpleañero/a' };
+        const DAYS_OF_WEEK = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+        const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+        // --- UTILS ---
+        const toISODateString = (date) => {
+          const offset = date.getTimezoneOffset() * 60000;
+          return new Date(date.getTime() - offset).toISOString().split('T')[0];
+        };
+
+        const formatDuration = (ms) => {
+          if (!ms) return "0m";
+          const minutes = Math.floor((ms / (1000 * 60)) % 60);
+          const hours = Math.floor((ms / (1000 * 60 * 60)));
+          return `${hours}h ${minutes}m`;
+        };
+        
+        const formatMoney = (amount) => {
+             return '₡' + (amount || 0).toLocaleString('es-CR');
+        };
+        
+        const calculateTaskCost = (task, rates) => {
+            if (!task.logistics || !task.logistics.viaticos || task.logistics.viaticos.length === 0) return 0;
+            let cost = 0;
+            const v = task.logistics.viaticos;
+            if (v.includes('Desayuno')) cost += rates.breakfast || 0;
+            if (v.includes('Almuerzo')) cost += rates.lunch || 0;
+            if (v.includes('Cena')) cost += rates.dinner || 0;
+            if (v.includes('Hospedaje')) {
+                // Use specific lodging cost if available (from location selection), else use global default
+                cost += task.logistics.lodgingCost || rates.lodging || 0;
+            }
+            return cost;
+        };
+
+        const getWeekRange = (date) => {
+          const d = new Date(date);
+          const day = d.getDay();
+          const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
+          const start = new Date(d.setDate(diff));
+          start.setHours(0,0,0,0);
+          const end = new Date(start);
+          end.setDate(start.getDate() + 6);
+          end.setHours(23,59,59,999);
+          return { start, end };
+        };
+
+        const uuid = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
+
+        const checkOverlap = (t1Start, t1End, t2Start, t2End) => {
+          return new Date(t1Start) < new Date(t2End) && new Date(t1End) > new Date(t2Start);
+        };
+
+        const generateRepetitions = (task, untilDate) => {
+          if (!task.repeat || task.repeat.type === 'none') return [task];
+          const tasks = [task];
+          const startDate = new Date(task.start);
+          const endDate = new Date(task.end);
+          const duration = endDate - startDate;
+          const until = new Date(untilDate);
+          let current = new Date(startDate);
+          
+          if (!task.seriesId) task.seriesId = task.id || uuid();
+
+          if (task.repeat.type === 'daily') {
+            current.setDate(current.getDate() + 1);
+            while (current <= until) {
+              const newStart = new Date(current);
+              const newEnd = new Date(current.getTime() + duration);
+              tasks.push({ ...task, id: uuid(), start: newStart.toISOString(), end: newEnd.toISOString(), parentId: task.id, isRepetition: true, status: 'pending', history: [], seriesId: task.seriesId });
+              current.setDate(current.getDate() + 1);
+            }
+          } else if (task.repeat.type === 'weekly') {
+            const days = task.repeat.days || [];
+            current.setDate(current.getDate() + 1);
+            while (current <= until) {
+              if (days.includes(current.getDay())) {
+                const newStart = new Date(current); newStart.setHours(startDate.getHours(), startDate.getMinutes());
+                const newEnd = new Date(newStart.getTime() + duration);
+                tasks.push({ ...task, id: uuid(), start: newStart.toISOString(), end: newEnd.toISOString(), parentId: task.id, isRepetition: true, status: 'pending', history: [], seriesId: task.seriesId });
+              }
+              current.setDate(current.getDate() + 1);
+            }
+          }
+          return tasks;
+        };
+
+        // --- DEFINICIÓN DE TEMAS ---
+        const DARK_THEME = {
+          bgPrimary: '#0a1214',
+          bgSecondary: '#0d1a1f',
+          bgTertiary: '#112428',
+          border: '#1e3a3a',
+          borderLight: '#2a4a4a',
+          textPrimary: '#e0f0f0',
+          textSecondary: '#8ab4b4',
+          textMuted: '#5a8a8a',
+          accent: '#4fd1c5',
+          accentHover: '#38b2ac',
+          success: '#48bb78',
+          warning: '#ed8936',
+          danger: '#fc8181',
+          gold: '#d69e2e',
+          themeIcon: 'sun'
+        };
+
+        const LIGHT_THEME = {
+          bgPrimary: '#ffffff',
+          bgSecondary: '#f4f7fa',
+          bgTertiary: '#e2e8f0',
+          border: '#cbd5e0',
+          borderLight: '#e2e8f0',
+          textPrimary: '#1a202c',
+          textSecondary: '#4a5568',
+          textMuted: '#718096',
+          accent: '#319795', 
+          accentHover: '#2c7a7b',
+          success: '#2f855a', 
+          warning: '#c05621', 
+          danger: '#c53030', 
+          gold: '#b7791f', 
+          themeIcon: 'moon'
+        };
+
+        // --- COMPONENTES UI ---
+        const Modal = ({ isOpen, onClose, title, children, size = 'md', colors }) => {
+          if (!isOpen) return null;
+          
+          return (
+            <div style={{position:'fixed',inset:0,zIndex:60,display:'flex',alignItems:'center',justifyContent:'center',backgroundColor:'rgba(0,0,0,0.85)',padding:'16px'}}>
+              <div style={{backgroundColor:colors.bgSecondary,borderRadius:'12px',border:`1px solid ${colors.border}`,boxShadow:'0 25px 50px -12px rgba(0,0,0,0.5)',width:'100%',maxWidth:size==='sm'?'400px':size==='lg'?'900px':size==='xl'?'1100px':'600px',maxHeight:'90vh',display:'flex',flexDirection:'column',color:colors.textSecondary}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'16px',borderBottom:`1px solid ${colors.border}`,backgroundColor:colors.bgPrimary}}>
+                  <h2 style={{fontSize:'18px',fontWeight:'bold',color:colors.accent}}>{title}</h2>
+                  <button onClick={onClose} style={{padding:'4px',borderRadius:'50%',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted}}><X size={20} /></button>
+                </div>
+                <div style={{padding:'20px',overflowY:'auto',flex:1}}>
+                  {children}
+                </div>
+              </div>
+            </div>
+          );
+        };
+        
+        const ConfigModal = ({ isOpen, onClose, colors, activityTypes, setActivityTypes, ppCodes, setPpCodes, viaticumRates, setViaticumRates, tasks, onUpdateTasks, monthlyBudgets, setMonthlyBudgets, isBudgetLocked, setIsBudgetLocked, lodgingRates, setLodgingRates, isViaticosLocked, setIsViaticosLocked, isTypesLocked, setIsTypesLocked, isPPLocked, setIsPPLocked }) => {
+            const [activeTab, setActiveTab] = useState('types');
+            const [newType, setNewType] = useState({ name: '', color: '#2ECC71', logistics: false, fields: [], subtypes: [] });
+            const [newPP, setNewPP] = useState({ code: '', description: '' });
+            const [transferData, setTransferData] = useState(null); 
+            const [isTransferring, setIsTransferring] = useState(false);
+            const [localBudgets, setLocalBudgets] = useState({});
+            
+            // Estado para la edición de tipos y subtipos
+            const [editingTypeId, setEditingTypeId] = useState(null);
+            const [subtypeInputValue, setSubtypeInputValue] = useState('');
+            
+            // Refs para el scroll
+            const formTopRef = useRef(null);
+
+            useEffect(() => {
+                setLocalBudgets(monthlyBudgets || {});
+            }, [monthlyBudgets, isOpen]);
+
+            if (!isOpen) return null;
+
+            const tabStyle = (isActive) => ({
+                padding:'10px 16px',borderRadius:'8px 8px 0 0',fontWeight:'bold',cursor:'pointer',border:'none',
+                backgroundColor:isActive?colors.bgPrimary:'transparent',color:isActive?colors.accent:colors.textMuted,
+                borderBottom:isActive?`2px solid ${colors.accent}`:'none'
+            });
+
+            // --- Lógica de Tipos de Actividad ---
+            const handleAddOrUpdateType = () => {
+                if(!newType.name) return;
+                
+                if (editingTypeId !== null) {
+                    // Actualizar existente
+                    setActivityTypes(activityTypes.map(t => t.id === editingTypeId ? { ...newType, id: editingTypeId } : t));
+                    setEditingTypeId(null);
+                } else {
+                    // Crear nuevo
+                    const id = Math.max(...activityTypes.map(t => t.id), 0) + 1;
+                    setActivityTypes([...activityTypes, { ...newType, id }]);
+                }
+                // Reset form
+                setNewType({ name: '', color: '#2ECC71', logistics: false, fields: [], subtypes: [] });
+                setSubtypeInputValue('');
+            };
+
+            const startEditingType = (type) => {
+                setNewType({ ...type, subtypes: type.subtypes || [] });
+                setEditingTypeId(type.id);
+                setSubtypeInputValue('');
+                // Scroll to top of the form
+                if (formTopRef.current) {
+                    formTopRef.current.scrollIntoView({ behavior: 'smooth' });
+                }
+            };
+
+            const cancelEditingType = () => {
+                setNewType({ name: '', color: '#2ECC71', logistics: false, fields: [], subtypes: [] });
+                setEditingTypeId(null);
+                setSubtypeInputValue('');
+            };
+
+            const handleDeleteTypeAttempt = (typeId) => {
+                const affectedTasks = tasks.filter(t => t.typeId === typeId);
+                if (affectedTasks.length > 0) {
+                    setTransferData({ deletingId: typeId, count: affectedTasks.length });
+                    setIsTransferring(true);
+                } else {
+                    setActivityTypes(activityTypes.filter(t => t.id !== typeId));
+                }
+            };
+
+            const confirmTransferAndDelete = (targetTypeId) => {
+                onUpdateTasks(transferData.deletingId, parseInt(targetTypeId));
+                setActivityTypes(activityTypes.filter(t => t.id !== transferData.deletingId));
+                setIsTransferring(false);
+                setTransferData(null);
+            };
+
+            // --- Lógica de Subtipos ---
+            const addSubtypeToForm = () => {
+                if (!subtypeInputValue.trim()) return;
+                setNewType({ ...newType, subtypes: [...(newType.subtypes || []), subtypeInputValue.trim()] });
+                setSubtypeInputValue('');
+            };
+
+            const removeSubtypeFromForm = (index) => {
+                const updated = [...(newType.subtypes || [])];
+                updated.splice(index, 1);
+                setNewType({ ...newType, subtypes: updated });
+            };
+
+            const updateSubtypeText = (index, text) => {
+                const updated = [...(newType.subtypes || [])];
+                updated[index] = text;
+                setNewType({ ...newType, subtypes: updated });
+            };
+            
+            // --- Lógica de Presupuesto ---
+            const handleBudgetChange = (monthIndex, value) => {
+                setLocalBudgets({ ...localBudgets, [monthIndex]: parseInt(value) || 0 });
+            };
+            
+            const saveBudgets = () => {
+                setMonthlyBudgets(localBudgets);
+                setIsBudgetLocked(true);
+                alert('Presupuestos actualizados y bloqueados correctamente.');
+            };
+
+            // --- Lógica de Carga de CSV para Hospedaje ---
+            const handleFileUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    const text = evt.target.result;
+                    const lines = text.split('\n');
+                    const newRates = [];
+                    // Skip header
+                    for (let i = 1; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if (!line) continue;
+                        
+                        // Parse logic: Prov, Cant, "Dists", Amt
+                        const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+                        if (matches) {
+                             const parts = [];
+                             let current = '';
+                             let inQuote = false;
+                             for(let char of line) {
+                                 if(char === '"') { inQuote = !inQuote; continue; }
+                                 if(char === ',' && !inQuote) { parts.push(current); current = ''; }
+                                 else { current += char; }
+                             }
+                             parts.push(current);
+
+                             if(parts.length >= 4) {
+                                 const monto = parseInt(parts[parts.length-1]);
+                                 const distritosRaw = parts[parts.length-2];
+                                 const canton = parts[parts.length-3];
+                                 const provincia = parts[parts.length-4];
+                                 
+                                 if(provincia && canton && distritosRaw && !isNaN(monto)) {
+                                     // Split districts by comma
+                                     const distritos = distritosRaw.split(',').map(d => d.trim());
+                                     newRates.push({ provincia, canton, distritos, monto });
+                                 }
+                             }
+                        }
+                    }
+                    if(newRates.length > 0) {
+                        setLodgingRates(newRates);
+                        alert(`Se cargaron ${newRates.length} registros de tarifas de hospedaje.`);
+                    } else {
+                        alert("No se pudieron leer registros válidos del archivo.");
+                    }
+                };
+                reader.readAsText(file);
+                e.target.value = ''; // Reset file input
+            };
+            
+            const currentYear = new Date().getFullYear(); 
+            const expensesByMonth = {};
+            tasks.forEach(t => {
+                const d = new Date(t.start);
+                const m = d.getMonth();
+                const cost = calculateTaskCost(t, viaticumRates);
+                expensesByMonth[m] = (expensesByMonth[m] || 0) + cost;
+            });
+
+            return (
+                <Modal isOpen={isOpen} onClose={onClose} title="Configuración del Sistema" size="lg" colors={colors}>
+                    <div style={{display:'flex',gap:'8px',marginBottom:'20px',borderBottom:`1px solid ${colors.border}`,paddingBottom:'8px'}}>
+                        <button onClick={() => setActiveTab('types')} style={tabStyle(activeTab === 'types')}>Tipos de Actividad</button>
+                        <button onClick={() => setActiveTab('ppcodes')} style={tabStyle(activeTab === 'ppcodes')}>Códigos PP</button>
+                        <button onClick={() => setActiveTab('viaticos')} style={tabStyle(activeTab === 'viaticos')}>Viáticos</button>
+                        <button onClick={() => setActiveTab('budget')} style={tabStyle(activeTab === 'budget')}>Presupuesto Mensual</button>
+                    </div>
+
+                    {activeTab === 'types' && (
+                        <div>
+                           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+                                <h4 style={{margin:0,color:colors.accent}}>Gestión de Tipos de Actividad</h4>
+                                {isTypesLocked ? (
+                                    <button onClick={() => setIsTypesLocked(false)} style={{display:'flex',alignItems:'center',gap:'6px',padding:'8px 16px',backgroundColor:colors.bgTertiary,color:colors.textPrimary,border:`1px solid ${colors.border}`,borderRadius:'4px',cursor:'pointer'}}><Unlock size={14}/> Activar Edición</button>
+                                ) : (
+                                    <button onClick={() => setIsTypesLocked(true)} style={{display:'flex',alignItems:'center',gap:'6px',padding:'8px 16px',backgroundColor:colors.success,color:'white',border:'none',borderRadius:'4px',cursor:'pointer'}}><Lock size={14}/> Bloquear Edición</button>
+                                )}
+                           </div>
+
+                           {isTransferring ? (
+                               <div style={{padding:'20px',backgroundColor:colors.bgPrimary,border:`1px solid ${colors.warning}`,borderRadius:'8px'}}>
+                                   <h3 style={{color:colors.warning,marginTop:0}}><AlertTriangle size={20} style={{verticalAlign:'middle'}}/> Atención</h3>
+                                   <p>Hay <strong>{transferData.count}</strong> actividades usando el tipo que deseas eliminar.</p>
+                                   <p>Selecciona a qué tipo de actividad deseas moverlas:</p>
+                                   <select id="transferSelect" style={{width:'100%',padding:'8px',marginBottom:'12px',backgroundColor:colors.bgSecondary,color:colors.textPrimary,border:`1px solid ${colors.border}`}}>
+                                       {activityTypes.filter(t => t.id !== transferData.deletingId).map(t => (
+                                           <option key={t.id} value={t.id}>{t.name}</option>
+                                       ))}
+                                   </select>
+                                   <div style={{display:'flex',gap:'8px',justifyContent:'flex-end'}}>
+                                       <button onClick={() => setIsTransferring(false)} style={{padding:'8px 16px',backgroundColor:'transparent',color:colors.textSecondary,border:'none',cursor:'pointer'}}>Cancelar</button>
+                                       <button onClick={() => confirmTransferAndDelete(document.getElementById('transferSelect').value)} style={{padding:'8px 16px',backgroundColor:colors.warning,color:colors.bgPrimary,fontWeight:'bold',border:'none',borderRadius:'4px',cursor:'pointer'}}>Mover y Eliminar</button>
+                                   </div>
+                               </div>
+                           ) : (
+                               <>
+                                <div ref={formTopRef} style={{padding:'12px',backgroundColor:colors.bgTertiary,borderRadius:'8px',marginBottom:'16px', opacity: isTypesLocked ? 0.6 : 1, pointerEvents: isTypesLocked ? 'none' : 'auto', border: editingTypeId !== null ? `2px solid ${colors.accent}` : 'none'}}>
+                                    <h4 style={{marginTop:0, color:colors.accent}}>{editingTypeId !== null ? 'Editar Tipo de Actividad' : 'Agregar Nuevo Tipo'}</h4>
+                                    
+                                    <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:'8px',marginBottom:'12px'}}>
+                                        <input placeholder="Nombre Actividad" value={newType.name} onChange={e=>setNewType({...newType, name:e.target.value})} style={{padding:'8px',borderRadius:'4px',border:`1px solid ${colors.border}`,backgroundColor:colors.bgPrimary,color:colors.textPrimary}}/>
+                                        <input type="color" value={newType.color} onChange={e=>setNewType({...newType, color:e.target.value})} style={{height:'36px',border:'none',backgroundColor:'transparent',cursor:'pointer'}} title="Color"/>
+                                        <label style={{display:'flex',alignItems:'center',gap:'4px',fontSize:'12px'}}><input type="checkbox" checked={newType.logistics} onChange={e=>setNewType({...newType, logistics:e.target.checked})}/> Logística</label>
+                                    </div>
+
+                                    {/* SECCIÓN DE SUBTIPOS */}
+                                    <div style={{backgroundColor:colors.bgPrimary, padding:'10px', borderRadius:'6px', border:`1px solid ${colors.border}`, marginBottom:'12px'}}>
+                                        <div style={{fontSize:'11px', fontWeight:'bold', color:colors.textMuted, marginBottom:'8px'}}>SUBTIPOS</div>
+                                        <div style={{display:'flex', gap:'8px', marginBottom:'8px'}}>
+                                            <input 
+                                                placeholder="Nuevo Subtipo (ej: Inspección Forestal)" 
+                                                value={subtypeInputValue} 
+                                                onChange={e=>setSubtypeInputValue(e.target.value)} 
+                                                style={{flex:1, padding:'6px', borderRadius:'4px', border:`1px solid ${colors.border}`, backgroundColor:colors.bgSecondary, color:colors.textPrimary, fontSize:'12px'}}
+                                            />
+                                            <button onClick={addSubtypeToForm} style={{padding:'6px 12px', backgroundColor:colors.success, color:'white', border:'none', borderRadius:'4px', cursor:'pointer'}}><Plus size={14}/></button>
+                                        </div>
+                                        <div style={{maxHeight:'100px', overflowY:'auto', display:'flex', flexDirection:'column', gap:'4px'}}>
+                                            {newType.subtypes && newType.subtypes.map((sub, idx) => (
+                                                <div key={idx} style={{display:'flex', gap:'4px', alignItems:'center'}}>
+                                                    <input 
+                                                        value={sub} 
+                                                        onChange={(e) => updateSubtypeText(idx, e.target.value)}
+                                                        style={{flex:1, padding:'4px', borderRadius:'4px', border:`1px solid ${colors.border}`, backgroundColor:'transparent', color:colors.textSecondary, fontSize:'12px'}}
+                                                    />
+                                                    <button onClick={() => removeSubtypeFromForm(idx)} style={{background:'transparent', border:'none', color:colors.danger, cursor:'pointer'}}><Trash2 size={12}/></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div style={{display:'flex', justifyContent:'flex-end', gap:'8px'}}>
+                                        {editingTypeId !== null && (
+                                            <button onClick={cancelEditingType} style={{padding:'8px 16px',backgroundColor:'transparent',color:colors.textMuted,border:'none',cursor:'pointer'}}>Cancelar</button>
+                                        )}
+                                        <button onClick={handleAddOrUpdateType} style={{padding:'8px 16px',backgroundColor:colors.success,color:'white',border:'none',borderRadius:'4px',cursor:'pointer'}}>{editingTypeId !== null ? 'Actualizar' : 'Agregar'}</button>
+                                    </div>
+                                </div>
+
+                                <div style={{maxHeight:'350px',overflowY:'auto'}}>
+                                    {activityTypes.map(type => (
+                                        <div key={type.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px',borderBottom:`1px solid ${colors.border}`,backgroundColor:colors.bgPrimary,marginBottom:'4px',borderRadius:'4px'}}>
+                                            <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                                                <div style={{width:'16px',height:'16px',borderRadius:'50%',backgroundColor:type.color}}></div>
+                                                <span style={{fontWeight:'bold'}}>{type.name}</span>
+                                                <span style={{fontSize:'10px',color:colors.textMuted}}>({type.subtypes?.length || 0} subtipos)</span>
+                                            </div>
+                                            <div style={{display:'flex', gap:'4px', opacity: isTypesLocked ? 0.3 : 1, pointerEvents: isTypesLocked ? 'none' : 'auto'}}>
+                                                <button onClick={() => startEditingType(type)} style={{padding:'4px', color:colors.accent,background:'transparent',border:'none',cursor:'pointer'}} title="Editar"><Edit2 size={16}/></button>
+                                                <button onClick={() => handleDeleteTypeAttempt(type.id)} style={{padding:'4px', color:colors.danger,background:'transparent',border:'none',cursor:'pointer'}} title="Eliminar"><Trash2 size={16}/></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                               </>
+                           )}
+                        </div>
+                    )}
+
+                    {activeTab === 'ppcodes' && (
+                        <div>
+                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+                                <h4 style={{margin:0,color:colors.accent}}>Gestión de Códigos PP</h4>
+                                {isPPLocked ? (
+                                    <button onClick={() => setIsPPLocked(false)} style={{display:'flex',alignItems:'center',gap:'6px',padding:'8px 16px',backgroundColor:colors.bgTertiary,color:colors.textPrimary,border:`1px solid ${colors.border}`,borderRadius:'4px',cursor:'pointer'}}><Unlock size={14}/> Activar Edición</button>
+                                ) : (
+                                    <button onClick={() => setIsPPLocked(true)} style={{display:'flex',alignItems:'center',gap:'6px',padding:'8px 16px',backgroundColor:colors.success,color:'white',border:'none',borderRadius:'4px',cursor:'pointer'}}><Lock size={14}/> Bloquear Edición</button>
+                                )}
+                           </div>
+
+                            <div style={{display:'flex',flexDirection:'column',gap:'8px',marginBottom:'16px', opacity: isPPLocked ? 0.6 : 1, pointerEvents: isPPLocked ? 'none' : 'auto'}}>
+                                <input placeholder="Código PP (ej: PPI-20-E20)" value={newPP.code} onChange={e=>setNewPP({...newPP, code: e.target.value})} style={{padding:'8px',borderRadius:'4px',border:`1px solid ${colors.border}`,backgroundColor:colors.bgPrimary,color:colors.textPrimary}}/>
+                                <textarea placeholder="Descripción detallada del código..." value={newPP.description} onChange={e=>setNewPP({...newPP, description: e.target.value})} style={{padding:'8px',borderRadius:'4px',border:`1px solid ${colors.border}`,backgroundColor:colors.bgPrimary,color:colors.textPrimary, minHeight:'60px', resize:'vertical'}}/>
+                                <button onClick={() => { if(newPP.code) { setPpCodes([...ppCodes, newPP]); setNewPP({code:'', description:''}); } }} style={{padding:'8px 16px',backgroundColor:colors.success,color:'white',border:'none',borderRadius:'4px',cursor:'pointer', alignSelf: 'flex-end'}}>Agregar Código</button>
+                            </div>
+
+                            <div style={{maxHeight:'350px',overflowY:'auto', border:`1px solid ${colors.border}`, borderRadius:'6px'}}>
+                                <table style={{width:'100%', fontSize:'12px', borderCollapse:'collapse'}}>
+                                    <thead style={{position:'sticky', top:0, backgroundColor:colors.bgTertiary}}>
+                                        <tr>
+                                            <th style={{padding:'8px', textAlign:'left', color:colors.textMuted, width:'120px'}}>Código</th>
+                                            <th style={{padding:'8px', textAlign:'left', color:colors.textMuted}}>Descripción</th>
+                                            <th style={{padding:'8px', width:'40px'}}></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {ppCodes.map((pp, idx) => (
+                                            <tr key={idx} style={{borderBottom:`1px solid ${colors.border}`}}>
+                                                <td style={{padding:'8px', fontWeight:'bold', color:colors.accent, verticalAlign: 'top'}}>{typeof pp === 'string' ? pp : pp.code}</td>
+                                                <td style={{padding:'8px', color:colors.textSecondary, whiteSpace: 'pre-wrap'}}>{typeof pp === 'string' ? '' : pp.description}</td>
+                                                <td style={{padding:'8px', textAlign:'center', verticalAlign: 'top'}}>
+                                                    <button 
+                                                        onClick={() => setPpCodes(ppCodes.filter((_, i) => i !== idx))} 
+                                                        style={{color:colors.danger,background:'transparent',border:'none',cursor:'pointer', opacity: isPPLocked ? 0.3 : 1, pointerEvents: isPPLocked ? 'none' : 'auto'}}
+                                                    >
+                                                        <Trash2 size={14}/>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'viaticos' && (
+                        <div>
+                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+                                <h4 style={{margin:0,color:colors.accent}}>Tarifas de Viáticos</h4>
+                                {isViaticosLocked ? (
+                                    <button onClick={() => setIsViaticosLocked(false)} style={{display:'flex',alignItems:'center',gap:'6px',padding:'8px 16px',backgroundColor:colors.bgTertiary,color:colors.textPrimary,border:`1px solid ${colors.border}`,borderRadius:'4px',cursor:'pointer'}}><Unlock size={14}/> Activar Edición</button>
+                                ) : (
+                                    <button onClick={() => setIsViaticosLocked(true)} style={{display:'flex',alignItems:'center',gap:'6px',padding:'8px 16px',backgroundColor:colors.success,color:'white',border:'none',borderRadius:'4px',cursor:'pointer'}}><Lock size={14}/> Guardar y Bloquear</button>
+                                )}
+                            </div>
+                            
+                            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px', marginBottom:'24px', opacity: isViaticosLocked ? 0.7 : 1, pointerEvents: isViaticosLocked ? 'none' : 'auto'}}>
+                                <div><label style={{fontSize:'12px',color:colors.textMuted}}>Desayuno (₡)</label><input type="number" value={viaticumRates.breakfast || 0} onChange={e=>setViaticumRates({...viaticumRates, breakfast: parseInt(e.target.value)})} style={{width:'100%',padding:'8px',marginTop:'4px',borderRadius:'4px',border:`1px solid ${colors.border}`,backgroundColor:colors.bgPrimary,color:colors.textPrimary}}/></div>
+                                <div><label style={{fontSize:'12px',color:colors.textMuted}}>Almuerzo (₡)</label><input type="number" value={viaticumRates.lunch || 0} onChange={e=>setViaticumRates({...viaticumRates, lunch: parseInt(e.target.value)})} style={{width:'100%',padding:'8px',marginTop:'4px',borderRadius:'4px',border:`1px solid ${colors.border}`,backgroundColor:colors.bgPrimary,color:colors.textPrimary}}/></div>
+                                <div><label style={{fontSize:'12px',color:colors.textMuted}}>Cena (₡)</label><input type="number" value={viaticumRates.dinner || 0} onChange={e=>setViaticumRates({...viaticumRates, dinner: parseInt(e.target.value)})} style={{width:'100%',padding:'8px',marginTop:'4px',borderRadius:'4px',border:`1px solid ${colors.border}`,backgroundColor:colors.bgPrimary,color:colors.textPrimary}}/></div>
+                                <div><label style={{fontSize:'12px',color:colors.textMuted}}>Hospedaje Default (₡)</label><input type="number" value={viaticumRates.lodging || 0} onChange={e=>setViaticumRates({...viaticumRates, lodging: parseInt(e.target.value)})} style={{width:'100%',padding:'8px',marginTop:'4px',borderRadius:'4px',border:`1px solid ${colors.border}`,backgroundColor:colors.bgPrimary,color:colors.textPrimary}}/></div>
+                            </div>
+                            
+                            <div style={{borderTop:`1px solid ${colors.border}`, paddingTop:'16px'}}>
+                                <h4 style={{margin:'0 0 12px 0',color:colors.accent}}>Tarifas de Hospedaje por Distrito</h4>
+                                
+                                <div style={{marginBottom:'12px', opacity: isViaticosLocked ? 0.5 : 1, pointerEvents: isViaticosLocked ? 'none' : 'auto'}}>
+                                    <label style={{display:'block',fontSize:'12px',color:colors.textMuted,marginBottom:'4px'}}>Cargar Archivo CSV (Provincia,Cantón,Distritos,Monto)</label>
+                                    <input type="file" accept=".csv" onChange={handleFileUpload} style={{width:'100%',padding:'8px',border:`1px solid ${colors.border}`,borderRadius:'4px',backgroundColor:colors.bgSecondary,color:colors.textPrimary}} />
+                                </div>
+                                
+                                {lodgingRates && lodgingRates.length > 0 ? (
+                                    <div style={{maxHeight:'300px', overflowY:'auto', border:`1px solid ${colors.border}`, borderRadius:'6px'}}>
+                                        <table style={{width:'100%', fontSize:'12px', borderCollapse:'collapse'}}>
+                                            <thead style={{position:'sticky', top:0, backgroundColor:colors.bgTertiary}}>
+                                                <tr>
+                                                    <th style={{padding:'8px', textAlign:'left', color:colors.textMuted}}>Provincia</th>
+                                                    <th style={{padding:'8px', textAlign:'left', color:colors.textMuted}}>Cantón</th>
+                                                    <th style={{padding:'8px', textAlign:'left', color:colors.textMuted}}>Distritos</th>
+                                                    <th style={{padding:'8px', textAlign:'right', color:colors.textMuted}}>Monto</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {lodgingRates.map((rate, idx) => (
+                                                    <tr key={idx} style={{borderBottom:`1px solid ${colors.border}`}}>
+                                                        <td style={{padding:'8px'}}>{rate.provincia}</td>
+                                                        <td style={{padding:'8px'}}>{rate.canton}</td>
+                                                        <td style={{padding:'8px', color:colors.textSecondary}}>{rate.distritos.join(', ')}</td>
+                                                        <td style={{padding:'8px', textAlign:'right', fontWeight:'bold', color:colors.success}}>₡{rate.monto.toLocaleString()}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <p style={{fontSize:'12px', color:colors.textMuted, fontStyle:'italic'}}>No hay tarifas de hospedaje cargadas.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {activeTab === 'budget' && (
+                        <div>
+                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+                                <h4 style={{margin:0,color:colors.accent}}>Control de Presupuesto Mensual</h4>
+                                {isBudgetLocked ? (
+                                    <button onClick={() => setIsBudgetLocked(false)} style={{display:'flex',alignItems:'center',gap:'6px',padding:'8px 16px',backgroundColor:colors.bgTertiary,color:colors.textPrimary,border:`1px solid ${colors.border}`,borderRadius:'4px',cursor:'pointer'}}><Unlock size={14}/> Activar Edición</button>
+                                ) : (
+                                    <button onClick={saveBudgets} style={{display:'flex',alignItems:'center',gap:'6px',padding:'8px 16px',backgroundColor:colors.success,color:'white',border:'none',borderRadius:'4px',cursor:'pointer'}}><Lock size={14}/> Guardar y Bloquear</button>
+                                )}
+                            </div>
+                            <div style={{maxHeight:'400px',overflowY:'auto'}}>
+                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'13px'}}>
+                                    <thead>
+                                        <tr style={{textAlign:'left',color:colors.textMuted,borderBottom:`1px solid ${colors.border}`}}>
+                                            <th style={{padding:'8px'}}>Mes</th>
+                                            <th style={{padding:'8px'}}>Límite Asignado</th>
+                                            <th style={{padding:'8px'}}>Gasto Programado</th>
+                                            <th style={{padding:'8px'}}>Disponible</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {MONTH_NAMES.map((month, index) => {
+                                            const limit = localBudgets[index] !== undefined ? localBudgets[index] : DEFAULT_MONTHLY_BUDGET;
+                                            const spent = expensesByMonth[index] || 0;
+                                            const remaining = limit - spent;
+                                            const isOver = remaining < 0;
+                                            
+                                            return (
+                                                <tr key={index} style={{borderBottom:`1px solid ${colors.border}`,backgroundColor:isOver ? `${colors.danger}15` : 'transparent'}}>
+                                                    <td style={{padding:'8px',fontWeight:'bold'}}>{month}</td>
+                                                    <td style={{padding:'8px'}}>
+                                                        <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
+                                                            ₡ <input 
+                                                                type="number" 
+                                                                disabled={isBudgetLocked}
+                                                                value={limit} 
+                                                                onChange={(e) => handleBudgetChange(index, e.target.value)}
+                                                                style={{width:'100px',padding:'4px',borderRadius:'4px',border:`1px solid ${colors.border}`,backgroundColor:isBudgetLocked ? colors.bgTertiary : colors.bgSecondary, color: isBudgetLocked ? colors.textMuted : colors.textPrimary, cursor: isBudgetLocked ? 'not-allowed' : 'text'}}
+                                                              />
+                                                        </div>
+                                                    </td>
+                                                    <td style={{padding:'8px',color:isOver?colors.danger:colors.textSecondary}}>{formatMoney(spent)}</td>
+                                                    <td style={{padding:'8px',fontWeight:'bold',color:isOver?colors.danger:colors.success}}>{formatMoney(remaining)}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </Modal>
+            );
+        };
+
+        const ScheduleAlert = ({ task, onAction, onClose, colors, activityTypes }) => {
+          if (!task) return null;
+          const ti = activityTypes.find(at => at.id === task.typeId);
+          return (
+            <div style={{position:'fixed',inset:0,zIndex:70,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px',backgroundColor:'rgba(0,0,0,0.85)'}}>
+              <div style={{borderRadius:'12px',border:`1px solid ${colors.border}`,boxShadow:'0 25px 50px -12px rgba(0,0,0,0.5)',width:'100%',maxWidth:'350px',padding:'16px',backgroundColor:colors.bgSecondary}}>
+                <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'12px',color:colors.accent}}><Bell size={16}/> <strong>Hora de Actividad</strong></div>
+                <p style={{fontSize:'14px',marginBottom:'8px',color:colors.textSecondary}}>Según tu planificación, ahora deberías iniciar:</p>
+                <div style={{padding:'8px',borderRadius:'6px',marginBottom:'12px',color:'white',backgroundColor:ti?.color || '#333'}}><strong>{ti?.name}</strong>{task.subtipo && `: ${task.subtipo}`}</div>
+                <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
+                  <button onClick={() => onAction('start')} style={{flex:1,padding:'8px',borderRadius:'6px',fontSize:'12px',fontWeight:'bold',display:'flex',alignItems:'center',justifyContent:'center',gap:'4px',backgroundColor:colors.success,color:colors.bgPrimary,border:'none',cursor:'pointer'}}><PlayCircle size={12}/> Iniciar</button>
+                  <button onClick={() => onAction('pause')} style={{flex:1,padding:'8px',borderRadius:'6px',fontSize:'12px',fontWeight:'bold',backgroundColor:colors.warning,color:colors.bgPrimary,border:'none',cursor:'pointer'}}>Pausar</button>
+                  <button onClick={onClose} style={{flex:1,padding:'8px',borderRadius:'6px',fontSize:'12px',backgroundColor:colors.bgTertiary,color:colors.textMuted,border:'none',cursor:'pointer'}}>Ignorar</button>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        const DayModalityModal = ({ isOpen, onClose, selectedDay, currentModality, onSave, colors }) => {
+          const [modality, setModality] = useState(currentModality || 'none');
+          useEffect(() => { setModality(currentModality || 'none'); }, [currentModality, isOpen]);
+          if (!isOpen) return null;
+          
+          const optionStyle = (isSelected, accentColor) => ({
+            display:'flex',alignItems:'center',gap:'12px',padding:'12px',borderRadius:'8px',border:`2px solid ${isSelected ? accentColor : colors.border}`,
+            cursor:'pointer',backgroundColor:isSelected ? `${accentColor}15` : 'transparent',marginBottom:'8px'
+          });
+
+          return (
+            <Modal isOpen={isOpen} onClose={onClose} title="Cambiar Modalidad del Día" size="sm" colors={colors}>
+              <div style={{fontSize:'12px',color:colors.textSecondary}}>
+                <p style={{fontSize:'14px',marginBottom:'16px'}}>Seleccione la modalidad para <strong style={{color:colors.accent}}>{selectedDay?.toLocaleDateString('es-CR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong>:</p>
+                
+                <div onClick={() => setModality('telework')} style={optionStyle(modality === 'telework', colors.accent)}>
+                  <input type="radio" checked={modality === 'telework'} onChange={() => setModality('telework')} style={{accentColor:colors.accent}}/>
+                  <div><strong style={{color:colors.accent}}>Teletrabajo</strong><p style={{color:colors.textMuted,margin:0}}>Trabajo remoto desde casa</p></div>
+                </div>
+                
+                <div onClick={() => setModality('presencial')} style={optionStyle(modality === 'presencial', colors.success)}>
+                  <input type="radio" checked={modality === 'presencial'} onChange={() => setModality('presencial')} style={{accentColor:colors.success}}/>
+                  <div><strong style={{color:colors.success}}>Presencial</strong><p style={{color:colors.textMuted,margin:0}}>Trabajo en oficina</p></div>
+                </div>
+                
+                <div onClick={() => setModality('none')} style={optionStyle(modality === 'none', colors.textMuted)}>
+                  <input type="radio" checked={modality === 'none'} onChange={() => setModality('none')} style={{accentColor:colors.textMuted}}/>
+                  <div><strong style={{color:colors.textMuted}}>Ninguno</strong><p style={{color:colors.textMuted,margin:0}}>Día libre, feriado, fin de semana</p></div>
+                </div>
+                
+                <div style={{display:'flex',justifyContent:'flex-end',gap:'8px',paddingTop:'16px'}}>
+                  <button onClick={onClose} style={{padding:'8px 16px',backgroundColor:'transparent',border:'none',color:colors.textMuted,cursor:'pointer'}}>Cancelar</button>
+                  <button onClick={() => { onSave(modality); onClose(); }} style={{padding:'8px 16px',borderRadius:'6px',fontWeight:'bold',backgroundColor:colors.success,color:colors.bgPrimary,border:'none',cursor:'pointer'}}>Guardar</button>
+                </div>
+              </div>
+            </Modal>
+          );
+        };
+
+        const CalendarCell = ({ day, tasks, currentDate, dayTag, markers, onToggleTag, onSelectDay, onAddTask, onEditTask, isSelected, onDrop, colors, activityTypes, isMonthOverBudget, viaticumRates }) => {
+          const dayStr = toISODateString(day);
+          const dayTasks = tasks
+            .filter(t => toISODateString(new Date(t.start)) === dayStr)
+            .sort((a, b) => new Date(a.start) - new Date(b.start));
+          const dayMarkers = markers.filter(m => m.date === dayStr);
+          const isToday = new Date().toDateString() === day.toDateString();
+          const isCurrentMonth = day.getMonth() === currentDate.getMonth();
+
+          // Detectar traslapes de horario entre actividades del día
+          let hasOverlap = false;
+          const activeDayTasks = dayTasks.filter(t => t.status !== 'completed');
+          for (let i = 0; i < activeDayTasks.length && !hasOverlap; i++) {
+            for (let j = i + 1; j < activeDayTasks.length && !hasOverlap; j++) {
+              const a = activeDayTasks[i], b = activeDayTasks[j];
+              const aStart = new Date(a.start).getTime(), aEnd = new Date(a.end).getTime();
+              const bStart = new Date(b.start).getTime(), bEnd = new Date(b.end).getTime();
+              if (aStart < bEnd && aEnd > bStart) {
+                hasOverlap = true;
+              }
+            }
+          }
+
+          let bgColor = colors.bgSecondary;
+          if (dayTag === 'telework') bgColor = `${colors.accent}1a`; 
+          if (dayTag === 'presencial') bgColor = `${colors.success}1a`; 
+
+          const handleDragOver = (e) => { e.preventDefault(); };
+          const handleDropEvent = (e) => { 
+            e.preventDefault(); 
+            const taskId = e.dataTransfer.getData('taskId'); 
+            if (taskId) onDrop(taskId, day); 
+          };
+
+          return (
+            <div 
+              onClick={onSelectDay}
+              onDragOver={handleDragOver}
+              onDrop={handleDropEvent}
+              style={{
+                minHeight:'200px',position:'relative',padding:'4px',display:'flex',flexDirection:'column',gap:'4px',
+                borderBottom:`1px solid ${colors.border}`,borderRight:`1px solid ${colors.border}`,
+                backgroundColor:bgColor,opacity:isCurrentMonth?1:0.5,
+                outline:isSelected?`2px solid ${colors.success}`:'none',cursor:'pointer'
+              }}
+            >
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                 <div style={{display:'flex',alignItems:'center',gap:'4px',flexWrap:'wrap'}}>
+                    <span 
+                      onClick={(e) => { e.stopPropagation(); onToggleTag(); }}
+                      style={{
+                        fontSize:'16px',fontWeight:'700',borderRadius:'4px',padding:'2px 6px',cursor:'pointer',
+                        backgroundColor:isToday?colors.success:'transparent',
+                        color:isToday?colors.bgPrimary:colors.textPrimary
+                      }}
+                    >{day.getDate()}</span>
+                    {hasOverlap && <span title="Actividades traslapadas en este día" style={{color:colors.danger,display:'flex',alignItems:'center',cursor:'help'}}><AlertTriangle size={16} /></span>}
+                    <div style={{display:'flex',gap:'2px',flexWrap:'wrap'}}>
+                       {dayMarkers.map((m, i) => {
+                          if (m.type === 'payment') return <span key={i} style={{color:colors.gold,fontWeight:'bold',fontSize:'10px'}}>₡</span>;
+                          if (m.type === 'holiday') return <Flag key={i} size={10} style={{color:colors.gold}} />;
+                          if (m.type === 'efemeride') return <Leaf key={i} size={10} style={{color:colors.success}} />;
+                          if (m.type === 'astro') return <Sun key={i} size={10} style={{color:colors.accent}} />;
+                          if (m.type === 'astro_event') return <Star key={i} size={10} style={{color:colors.accent}} />;
+                          if (m.type === 'moon') return <span key={i} style={{fontSize:'10px',color:colors.textSecondary}} title={m.name}>{m.icon}</span>;
+                          return null;
+                       })}
+                    </div>
+                 </div>
+                 <button onClick={(e) => { e.stopPropagation(); onAddTask(); }} style={{opacity:0.5,backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,padding:'2px'}}><Plus size={14}/></button>
+              </div>
+
+              <div style={{display:'flex',flexDirection:'column',gap:'2px',overflowY:'auto',maxHeight:'120px'}}>
+                 {dayTasks.map(t => {
+                    const ti = activityTypes.find(at => at.id === t.typeId);
+                    const cost = calculateTaskCost(t, viaticumRates);
+                    const showBudgetWarning = isMonthOverBudget && cost > 0;
+                    
+                    return (
+                      <div 
+                        key={t.id} 
+                        draggable 
+                        onDragStart={(e) => e.dataTransfer.setData('taskId', t.id)}
+                        onClick={(e) => { e.stopPropagation(); onEditTask(t); }} 
+                        style={{
+                          fontSize:'10px',padding:'3px 5px',borderRadius:'3px',borderLeft:`3px solid ${ti?.color || colors.border}`,
+                          cursor:'pointer',overflow:'hidden',display:'flex',alignItems:'flex-start',gap:'3px',
+                          backgroundColor:t.status === 'completed' ? colors.bgTertiary : t.status === 'in_progress' ? `${colors.success}22` : colors.bgPrimary,
+                          color:t.status === 'completed' ? colors.textMuted : colors.textPrimary,
+                          textDecoration:t.status === 'completed' ? 'line-through' : 'none',
+                          opacity:t.status === 'completed' ? 0.6 : 1,
+                          boxShadow:t.status === 'in_progress' ? `0 0 0 2px ${colors.success}, 0 0 6px ${colors.success}44` : 'none',
+                          animation:t.status === 'in_progress' ? 'pulseGlow 2s ease-in-out infinite' : 'none'
+                        }}
+                      >
+                         <GripVertical size={8} style={{opacity:0.5,marginTop:'2px',flexShrink:0}}/>
+                         {t.status === 'in_progress' && <span style={{fontSize:'7px',fontWeight:'800',color:colors.success,backgroundColor:`${colors.success}22`,padding:'0 3px',borderRadius:'2px',lineHeight:'1.4',flexShrink:0,marginTop:'1px'}}>▶</span>}
+                         {showBudgetWarning && <DollarSign size={10} color={colors.danger} style={{marginRight:'2px',marginTop:'2px',flexShrink:0}} />}
+                         <div style={{display:'flex',flexDirection:'column',overflow:'hidden',lineHeight:'1.3'}}>
+                           <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ti?.name || t.activityTypeName || 'Actividad'}</span>
+                           {t.fieldData?.expediente && <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:'9px',opacity:0.7}}>{t.fieldData.expediente}</span>}
+                         </div>
+                      </div>
+                    );
+                 })}
+              </div>
+            </div>
+          );
+        };
+
+        // --- COMPONENTE DE SELECCIÓN CON BÚSQUEDA (AUTOCOMPLETE) ---
+        const SearchableSelect = ({ options, value, onChange, placeholder, colors, renderOption, getLabel, getValue }) => {
+          const [isOpen, setIsOpen] = useState(false);
+          const [searchText, setSearchText] = useState('');
+          const containerRef = useRef(null);
+          const inputRef = useRef(null);
+
+          const selectedOption = options.find(o => getValue(o) === value);
+          const displayText = selectedOption ? getLabel(selectedOption) : '';
+
+          useEffect(() => {
+            if (!isOpen) setSearchText('');
+          }, [isOpen]);
+
+          useEffect(() => {
+            const handleClickOutside = (e) => {
+              if (containerRef.current && !containerRef.current.contains(e.target)) {
+                setIsOpen(false);
+              }
+            };
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+          }, []);
+
+          const filteredOptions = searchText
+            ? options.filter(o => getLabel(o).toLowerCase().includes(searchText.toLowerCase()))
+            : options;
+
+          return (
+            <div ref={containerRef} style={{position:'relative', width:'100%'}}>
+              <div 
+                onClick={() => { setIsOpen(true); setTimeout(() => inputRef.current?.focus(), 50); }}
+                style={{
+                  width:'100%', backgroundColor:colors.bgPrimary, border:`1px solid ${isOpen ? colors.accent : colors.border}`,
+                  borderRadius:'6px', padding:'10px', color:colors.textPrimary, fontSize:'14px', cursor:'pointer',
+                  display:'flex', alignItems:'center', justifyContent:'space-between', minHeight:'42px'
+                }}
+              >
+                {isOpen ? (
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={searchText}
+                    onChange={e => setSearchText(e.target.value)}
+                    placeholder={displayText || placeholder || 'Buscar...'}
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      flex:1, border:'none', outline:'none', backgroundColor:'transparent',
+                      color:colors.textPrimary, fontSize:'14px', padding:0
+                    }}
+                  />
+                ) : (
+                  <span style={{color: displayText ? colors.textPrimary : colors.textMuted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                    {displayText || placeholder || 'Seleccione...'}
+                  </span>
+                )}
+                <ChevronRight size={14} style={{transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition:'transform 0.2s', color:colors.textMuted, flexShrink:0, marginLeft:'8px'}}/>
+              </div>
+
+              {isOpen && (
+                <div style={{
+                  position:'absolute', top:'100%', left:0, right:0, zIndex:100,
+                  backgroundColor:colors.bgSecondary, border:`1px solid ${colors.accent}`,
+                  borderRadius:'0 0 6px 6px', boxShadow:'0 8px 24px rgba(0,0,0,0.4)',
+                  maxHeight:'220px', overflowY:'auto'
+                }}>
+                  {filteredOptions.length === 0 ? (
+                    <div style={{padding:'12px', textAlign:'center', color:colors.textMuted, fontSize:'12px'}}>Sin resultados</div>
+                  ) : (
+                    filteredOptions.map((option, idx) => {
+                      const optValue = getValue(option);
+                      const isSelected = optValue === value;
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => { onChange(optValue); setIsOpen(false); setSearchText(''); }}
+                          style={{
+                            padding:'9px 12px', cursor:'pointer', fontSize:'13px',
+                            backgroundColor: isSelected ? `${colors.accent}22` : 'transparent',
+                            color: isSelected ? colors.accent : colors.textPrimary,
+                            fontWeight: isSelected ? '600' : 'normal',
+                            borderBottom: `1px solid ${colors.border}`,
+                            display:'flex', alignItems:'center', gap:'8px'
+                          }}
+                          onMouseEnter={e => { if (!isSelected) e.currentTarget.style.backgroundColor = `${colors.accent}11`; }}
+                          onMouseLeave={e => { if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                        >
+                          {renderOption ? renderOption(option, isSelected) : getLabel(option)}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        const TaskFormModal = ({ isOpen, onClose, task, day, onSave, onDelete, onDuplicate, tasks, colors, activityTypes, ppCodes, viaticumRates, currentMonthBudget, lodgingRates, sortedActivityTypes, getSortedSubtypes }) => {
+           if (!isOpen) return null;
+           const isNew = !task;
+           const taskStatus = task?.status || 'pending';
+           
+           const [form, setForm] = useState({ 
+             typeId: 1, start: new Date(), end: new Date(), subtipo: '', observations: '', fieldData: {}, status: 'pending',
+             repeat: { type: 'none' },
+             logistics: { requiereVehiculo: false, dobleTraccion: false, tarjetaRuedo: false, viaticos: [], codigoPP: 'PPI-17-E18', lodgingLocation: null, lodgingCost: 0 }
+           });
+           
+           const [showContinuationForm, setShowContinuationForm] = useState(false);
+           const [contDate, setContDate] = useState('');
+           const [contStart, setContStart] = useState('');
+           const [contEnd, setContEnd] = useState('');
+           const [showCloneForm, setShowCloneForm] = useState(false);
+           const [cloneDate, setCloneDate] = useState('');
+           const [cloneStart, setCloneStart] = useState('');
+           const [cloneEnd, setCloneEnd] = useState('');
+           const [showRepeat, setShowRepeat] = useState(false);
+           const [overlapWarning, setOverlapWarning] = useState(null);
+           const [currentCost, setCurrentCost] = useState(0);
+
+           // Lodging Selection States
+           const [selectedProvincia, setSelectedProvincia] = useState('');
+           const [selectedCanton, setSelectedCanton] = useState('');
+           const [selectedDistrito, setSelectedDistrito] = useState('');
+
+           // Location & Contact States
+           const [locationData, setLocationData] = useState({
+             provincia: '',
+             canton: '',
+             distrito: '',
+             otrasSenas: '',
+             enlaceUbicacion: ''
+           });
+           const [contacts, setContacts] = useState([
+             { nombre: '', telefono: '' }
+           ]);
+
+           // Filtered location data
+           const [filteredCantones, setFilteredCantones] = useState([]);
+           const [filteredDistritos, setFilteredDistritos] = useState([]);
+
+           useEffect(() => {
+              let initialForm;
+              if(task) {
+                  initialForm = { 
+                    ...task, start: new Date(task.start), end: new Date(task.end), 
+                    logistics: task.logistics || { requiereVehiculo: false, dobleTraccion: false, tarjetaRuedo: false, viaticos: [], codigoPP: 'PPI-17-E18' },
+                    repeat: task.repeat || { type: 'none' },
+                    status: task.status || 'pending',
+                    seriesId: task.seriesId 
+                  };
+                  if(task.logistics && task.logistics.lodgingLocation) {
+                      setSelectedProvincia(task.logistics.lodgingLocation.provincia);
+                      setSelectedCanton(task.logistics.lodgingLocation.canton);
+                      setSelectedDistrito(task.logistics.lodgingLocation.distrito);
+                  } else {
+                      setSelectedProvincia(''); setSelectedCanton(''); setSelectedDistrito('');
+                  }
+                  
+                  // Load location and contact data if exists
+                  if (task.fieldData?.location) {
+                    setLocationData(task.fieldData.location);
+                    // Update filtered cantones based on provincia
+                    if (task.fieldData.location.provincia) {
+                      const provData = PROVINCIAS_CR.find(p => p.provincia === task.fieldData.location.provincia);
+                      if (provData) {
+                        setFilteredCantones(provData.cantones);
+                      }
+                    }
+                    // Update filtered distritos based on canton
+                    if (task.fieldData.location.canton) {
+                      const cantonData = filteredCantones.find(c => c.canton === task.fieldData.location.canton);
+                      if (cantonData) {
+                        setFilteredDistritos(cantonData.distritos);
+                      }
+                    }
+                  }
+                  if (task.fieldData?.contacts) {
+                    setContacts(task.fieldData.contacts);
+                  }
+              } else if(day) {
+                 const s = new Date(day); s.setHours(8,0,0,0);
+                 initialForm = { typeId: 1, start: s, end: new Date(s.getTime()+90*60000), subtipo: '', observations: '', fieldData: {}, status: 'pending',
+                   repeat: { type: 'none' },
+                   logistics: { requiereVehiculo: false, dobleTraccion: false, tarjetaRuedo: false, viaticos: [], codigoPP: 'PPI-17-E18' }
+                 };
+                 setSelectedProvincia(''); setSelectedCanton(''); setSelectedDistrito('');
+                 setLocationData({
+                   provincia: '',
+                   canton: '',
+                   distrito: '',
+                   otrasSenas: '',
+                   enlaceUbicacion: ''
+                 });
+                 setContacts([{ nombre: '', telefono: '' }]);
+              }
+              setForm(initialForm);
+              setOverlapWarning(null);
+              
+              const baseDate = task ? new Date(task.end) : new Date();
+              baseDate.setDate(baseDate.getDate() + 1);
+              setContDate(toISODateString(baseDate));
+              setContStart("08:00");
+              setContEnd("12:00");
+              setShowContinuationForm(false);
+              
+           }, [task, day, isOpen]);
+
+           // Recalcular costo cada vez que cambian logistica o viaticos
+           useEffect(() => {
+               if (form) setCurrentCost(calculateTaskCost(form, viaticumRates));
+           }, [form.logistics.viaticos, form.logistics.lodgingCost, viaticumRates]);
+
+           const typeInfo = activityTypes.find(t => t.id === parseInt(form.typeId));
+           const toInput = (d) => { if(!d) return ''; const x = new Date(d); x.setMinutes(x.getMinutes()-x.getTimezoneOffset()); return x.toISOString().slice(0,16); };
+
+           const checkForOverlaps = (start, end) => {
+            return tasks.filter(t => t.id !== task?.id && t.status !== 'completed' && checkOverlap(start.toISOString(), end.toISOString(), t.start, t.end));
+           };
+
+           const handleSave = (forcedStatus = null) => {
+              const overlaps = checkForOverlaps(form.start, form.end);
+              if (overlaps.length > 0 && !overlapWarning) { setOverlapWarning(overlaps); return; }
+              
+              // Combine location and contact data into fieldData
+              const updatedFieldData = {
+                ...form.fieldData,
+                location: locationData,
+                contacts: contacts
+              };
+              
+              // Update the lugar field with formatted location
+              if (locationData.provincia || locationData.canton || locationData.distrito || locationData.otrasSenas) {
+                const lugarParts = [];
+                if (locationData.provincia) lugarParts.push(locationData.provincia);
+                if (locationData.canton) lugarParts.push(locationData.canton);
+                if (locationData.distrito) lugarParts.push(locationData.distrito);
+                if (locationData.otrasSenas) lugarParts.push(locationData.otrasSenas);
+                updatedFieldData.lugar = lugarParts.join(', ');
+              }
+              
+              const statusToSave = forcedStatus || form.status;
+              const taskToSave = { 
+                ...form, 
+                fieldData: updatedFieldData,
+                activityTypeName: typeInfo?.name || 'Actividad', 
+                status: statusToSave 
+              };
+              onSave(taskToSave);
+           };
+           
+           const handleConfirmContinuation = () => {
+               if(!contDate || !contStart || !contEnd) return;
+               const [y,m,d] = contDate.split('-').map(Number);
+               const [sh, sm] = contStart.split(':').map(Number);
+               const [eh, em] = contEnd.split(':').map(Number);
+               const start = new Date(y, m-1, d, sh, sm);
+               const end = new Date(y, m-1, d, eh, em);
+               onDuplicate(task, start, end);
+           };
+           
+           const handleConfirmClone = () => {
+               if(!cloneDate || !cloneStart || !cloneEnd) return;
+               const [y,m,d] = cloneDate.split('-').map(Number);
+               const [sh, sm] = cloneStart.split(':').map(Number);
+               const [eh, em] = cloneEnd.split(':').map(Number);
+               const start = new Date(y, m-1, d, sh, sm);
+               const end = new Date(y, m-1, d, eh, em);
+               const clonedTask = { 
+                 ...form, 
+                 id: undefined, 
+                 seriesId: undefined, 
+                 sessions: [], 
+                 rescheduleCount: 0, 
+                 status: 'pending', 
+                 start: start.toISOString(), 
+                 end: end.toISOString(), 
+                 activityTypeName: typeInfo?.name || 'Actividad' 
+               };
+               onSave(clonedTask);
+           };
+           
+           // Lodging Selection Logic
+           const uniqueProvincias = useMemo(() => {
+               if(!lodgingRates) return [];
+               return [...new Set(lodgingRates.map(r => r.provincia))];
+           }, [lodgingRates]);
+
+           const filteredLodgingCantons = useMemo(() => {
+               if(!selectedProvincia || !lodgingRates) return [];
+               return [...new Set(lodgingRates.filter(r => r.provincia === selectedProvincia).map(r => r.canton))];
+           }, [selectedProvincia, lodgingRates]);
+
+           const filteredLodgingDistricts = useMemo(() => {
+               if(!selectedProvincia || !selectedCanton || !lodgingRates) return [];
+               const rates = lodgingRates.filter(r => r.provincia === selectedProvincia && r.canton === selectedCanton);
+               let dists = [];
+               rates.forEach(r => dists = [...dists, ...r.distritos]);
+               return dists;
+           }, [selectedProvincia, selectedCanton, lodgingRates]);
+
+           const handleLodgingChange = (distrito) => {
+               setSelectedDistrito(distrito);
+               if(distrito && lodgingRates) {
+                   const rateObj = lodgingRates.find(r => r.provincia === selectedProvincia && r.canton === selectedCanton && r.distritos.includes(distrito));
+                   if(rateObj) {
+                       setForm({
+                           ...form, 
+                           logistics: {
+                               ...form.logistics, 
+                               lodgingLocation: { provincia: selectedProvincia, canton: selectedCanton, distrito },
+                               lodgingCost: rateObj.monto
+                           }
+                       });
+                   }
+               }
+           };
+
+           // Location Handlers
+           const handleProvinciaChange = (provincia) => {
+             setLocationData({...locationData, provincia, canton: '', distrito: ''});
+             const provData = PROVINCIAS_CR.find(p => p.provincia === provincia);
+             setFilteredCantones(provData ? provData.cantones : []);
+             setFilteredDistritos([]);
+           };
+
+           const handleCantonChange = (canton) => {
+             setLocationData({...locationData, canton, distrito: ''});
+             const cantonData = filteredCantones.find(c => c.canton === canton);
+             setFilteredDistritos(cantonData ? cantonData.distritos : []);
+           };
+
+           const handleDistritoChange = (distrito) => {
+             setLocationData({...locationData, distrito});
+           };
+
+           const handleLocationFieldChange = (field, value) => {
+             setLocationData({...locationData, [field]: value});
+           };
+
+           // Contact Handlers
+           const handleContactChange = (index, field, value) => {
+             const newContacts = [...contacts];
+             newContacts[index][field] = value;
+             setContacts(newContacts);
+           };
+
+           const addContact = () => {
+             if (contacts.length < 2) {
+               setContacts([...contacts, { nombre: '', telefono: '' }]);
+             }
+           };
+
+           const removeContact = (index) => {
+             if (contacts.length > 1) {
+               const newContacts = contacts.filter((_, i) => i !== index);
+               setContacts(newContacts);
+             }
+           };
+
+           // Copy location link to clipboard
+           const copyLocationLink = () => {
+             if (locationData.enlaceUbicacion) {
+               navigator.clipboard.writeText(locationData.enlaceUbicacion);
+               alert('Enlace copiado al portapapeles');
+             }
+           };
+
+           const isBudgetExceeded = currentMonthBudget && (currentMonthBudget.spent + currentCost - (task ? calculateTaskCost(task, viaticumRates) : 0)) > currentMonthBudget.limit;
+
+           const inputStyle = {width:'100%',backgroundColor:colors.bgPrimary,border:`1px solid ${colors.border}`,borderRadius:'6px',padding:'10px',color:colors.textPrimary,fontSize:'14px'};
+           const labelStyle = {display:'block',fontSize:'11px',color:colors.textMuted,textTransform:'uppercase',fontWeight:'bold',marginBottom:'4px'};
+
+           // Check if this activity type requires location & contact section
+           const requiresLocationContact = [3, 10, 11, 12].includes(parseInt(form.typeId));
+
+           return (
+              <Modal isOpen={isOpen} onClose={onClose} title={isNew ? "Nueva Actividad" : "Detalle de Actividad"} colors={colors}>
+                 <div style={{display:'flex',flexDirection:'column',gap:'16px',color:colors.textSecondary}}>
+                    
+                    {!isNew && !showContinuationForm && (
+                        <div style={{display:'flex', gap:'8px', flexWrap:'wrap', paddingBottom:'12px', borderBottom:`1px solid ${colors.border}`}}>
+                            {taskStatus !== 'in_progress' && (
+                                <button onClick={() => handleSave('in_progress')} style={{flex:1, padding:'10px', borderRadius:'6px', fontWeight:'bold', backgroundColor:colors.success, color:colors.bgPrimary, border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px'}}>
+                                    <PlayCircle size={18}/> Iniciar
+                                </button>
+                            )}
+                            {taskStatus === 'in_progress' && (
+                                <button onClick={() => handleSave('paused')} style={{flex:1, padding:'10px', borderRadius:'6px', fontWeight:'bold', backgroundColor:colors.warning, color:colors.bgPrimary, border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px'}}>
+                                    <PauseCircle size={18}/> Pausar
+                                </button>
+                            )}
+                            {taskStatus !== 'completed' && (
+                                <button onClick={() => handleSave('completed')} style={{flex:1, padding:'10px', borderRadius:'6px', fontWeight:'bold', backgroundColor:colors.accent, color:colors.bgPrimary, border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px'}}>
+                                    <CheckCircle size={18}/> Finalizar
+                                </button>
+                            )}
+                        </div>
+                    )}
+                    
+                    {!isNew && !showContinuationForm && !showCloneForm && (
+                        <div style={{display:'flex', gap:'8px', flexWrap:'wrap', justifyContent: 'space-between'}}>
+                            <button onClick={() => document.getElementById('start-date-input')?.focus()} style={{padding:'8px 12px', borderRadius:'6px', fontSize:'12px', backgroundColor:colors.bgTertiary, color:colors.textMuted, border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'6px'}}><Calendar size={14}/> Reprogramar</button>
+                            <button onClick={() => setShowContinuationForm(true)} style={{padding:'8px 12px', borderRadius:'6px', fontSize:'12px', backgroundColor:colors.bgTertiary, color:colors.textMuted, border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'6px'}}><ArrowRightCircle size={14}/> Programar Continuación</button>
+                            <button onClick={() => { setShowCloneForm(true); const s = new Date(form.start); const e = new Date(form.end); setCloneDate(toISODateString(s)); setCloneStart(s.toTimeString().slice(0,5)); setCloneEnd(e.toTimeString().slice(0,5)); }} style={{padding:'8px 12px', borderRadius:'6px', fontSize:'12px', backgroundColor:colors.bgTertiary, color:colors.textMuted, border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'6px'}}><Copy size={14}/> Clonar</button>
+                            <button onClick={() => onDelete(task.id)} style={{color:colors.warning, backgroundColor:'transparent', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'4px', fontSize:'12px'}}><Trash2 size={14}/></button>
+                        </div>
+                    )}
+
+                    {showCloneForm && (
+                        <div style={{backgroundColor:colors.bgTertiary, padding:'12px', borderRadius:'8px', border:`1px solid ${colors.success}`}}>
+                            <h4 style={{fontSize:'12px', fontWeight:'bold', color:colors.success, marginBottom:'12px', display:'flex', alignItems:'center', gap:'6px'}}><Copy size={14}/> Clonar Actividad</h4>
+                            <p style={{fontSize:'11px', color:colors.textMuted, marginBottom:'12px'}}>Se creará una copia independiente de esta actividad con toda su información. Ajuste la fecha y hora de la copia.</p>
+                            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'12px'}}>
+                                <div style={{gridColumn:'span 2'}}>
+                                    <label style={labelStyle}>Fecha</label>
+                                    <input type="date" style={inputStyle} value={cloneDate} onChange={e => setCloneDate(e.target.value)} />
+                                </div>
+                                <div><label style={labelStyle}>Inicio</label><input type="time" style={inputStyle} value={cloneStart} onChange={e => setCloneStart(e.target.value)} /></div>
+                                <div><label style={labelStyle}>Fin</label><input type="time" style={inputStyle} value={cloneEnd} onChange={e => setCloneEnd(e.target.value)} /></div>
+                            </div>
+                            <div style={{display:'flex', gap:'8px'}}>
+                                <button onClick={() => setShowCloneForm(false)} style={{flex:1, padding:'8px', backgroundColor:'transparent', border:`1px solid ${colors.border}`, color:colors.textMuted, borderRadius:'6px', cursor:'pointer'}}>Cancelar</button>
+                                <button onClick={handleConfirmClone} style={{flex:1, padding:'8px', backgroundColor:colors.success, color:colors.bgPrimary, fontWeight:'bold', borderRadius:'6px', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px'}}><Copy size={14}/> Clonar</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {showContinuationForm && (
+                        <div style={{backgroundColor:colors.bgTertiary, padding:'12px', borderRadius:'8px', border:`1px solid ${colors.accent}`}}>
+                            <h4 style={{fontSize:'12px', fontWeight:'bold', color:colors.accent, marginBottom:'12px', display:'flex', alignItems:'center', gap:'6px'}}><CalendarPlus size={14}/> Programar Siguiente Sesión</h4>
+                            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'12px'}}>
+                                <div style={{gridColumn:'span 2'}}>
+                                    <label style={labelStyle}>Fecha</label>
+                                    <input type="date" style={inputStyle} value={contDate} onChange={e => setContDate(e.target.value)} />
+                                </div>
+                                <div><label style={labelStyle}>Inicio</label><input type="time" style={inputStyle} value={contStart} onChange={e => setContStart(e.target.value)} /></div>
+                                <div><label style={labelStyle}>Fin</label><input type="time" style={inputStyle} value={contEnd} onChange={e => setContEnd(e.target.value)} /></div>
+                            </div>
+                            <div style={{display:'flex', gap:'8px'}}>
+                                <button onClick={() => setShowContinuationForm(false)} style={{flex:1, padding:'8px', backgroundColor:'transparent', border:`1px solid ${colors.border}`, color:colors.textMuted, borderRadius:'6px', cursor:'pointer'}}>Cancelar</button>
+                                <button onClick={handleConfirmContinuation} style={{flex:1, padding:'8px', backgroundColor:colors.accent, color:colors.bgPrimary, fontWeight:'bold', borderRadius:'6px', border:'none', cursor:'pointer'}}>Confirmar</button>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Overlap Warning */}
+                    {overlapWarning && (
+                      <div style={{padding:'12px',backgroundColor:`${colors.danger}1a`,border:`1px solid ${colors.danger}`,borderRadius:'8px',color:colors.danger}}>
+                        <div style={{display:'flex',alignItems:'center',gap:'8px',fontWeight:'bold',marginBottom:'4px'}}><AlertTriangle size={16}/> Conflicto de Horario</div>
+                        <p style={{fontSize:'12px',marginBottom:'8px'}}>Esta actividad choca con: {overlapWarning.map(t => t.activityTypeName).join(', ')}</p>
+                        <div style={{display:'flex',gap:'8px'}}>
+                          <button onClick={() => setOverlapWarning(null)} style={{padding:'6px 12px',backgroundColor:`${colors.danger}33`,borderRadius:'4px',fontSize:'12px',border:'none',color:colors.danger,cursor:'pointer'}}>Cancelar</button>
+                          <button onClick={() => onSave({ ...form, activityTypeName: typeInfo?.name })} style={{padding:'6px 12px',backgroundColor:colors.danger,color:'white',borderRadius:'4px',fontSize:'12px',border:'none',cursor:'pointer'}}>Guardar de todos modos</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {isBudgetExceeded && currentCost > 0 && (
+                        <div style={{padding:'12px',backgroundColor:`${colors.danger}1a`,border:`1px solid ${colors.danger}`,borderRadius:'8px',color:colors.danger, display:'flex', alignItems:'center', gap:'12px'}}>
+                            <DollarSign size={24} />
+                            <div>
+                                <div style={{fontWeight:'bold'}}>Límite Presupuestario Excedido</div>
+                                <div style={{fontSize:'12px'}}>Esta actividad excede el presupuesto disponible del mes.</div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div>
+                       <label style={labelStyle}>Tipo de Actividad</label>
+                       <SearchableSelect
+                         options={sortedActivityTypes || activityTypes}
+                         value={form.typeId}
+                         onChange={val => setForm({...form, typeId: parseInt(val), subtipo: ''})}
+                         placeholder="Buscar tipo de actividad..."
+                         colors={colors}
+                         getLabel={t => t.name}
+                         getValue={t => t.id}
+                         renderOption={(t, isSelected) => (
+                           <>
+                             <div style={{width:'12px',height:'12px',borderRadius:'50%',backgroundColor:t.color,flexShrink:0}}></div>
+                             <span>{t.name}</span>
+                           </>
+                         )}
+                       />
+                    </div>
+
+                    {typeInfo?.subtypes?.length > 0 && (
+                       <div>
+                          <label style={labelStyle}>Subtipo</label>
+                          <SearchableSelect
+                            options={(getSortedSubtypes ? getSortedSubtypes(form.typeId, typeInfo.subtypes) : typeInfo.subtypes).map(s => ({label: s, value: s}))}
+                            value={form.subtipo}
+                            onChange={val => setForm({...form, subtipo: val})}
+                            placeholder="Buscar subtipo..."
+                            colors={colors}
+                            getLabel={o => o.label}
+                            getValue={o => o.value}
+                          />
+                       </div>
+                    )}
+
+                    {typeInfo?.fields?.map(field => (
+                      <div key={field}>
+                        <label style={labelStyle}>{FIELD_LABELS[field] || field}</label>
+                        <input type="text" style={inputStyle} value={form.fieldData?.[field] || ''} onChange={e => setForm({ ...form, fieldData: { ...form.fieldData, [field]: e.target.value } })}/>
+                      </div>
+                    ))}
+
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px'}}>
+                       <div><label style={labelStyle}>Inicio</label><input id="start-date-input" type="datetime-local" style={inputStyle} value={toInput(form.start)} onChange={e=>setForm({...form, start: new Date(e.target.value)})}/></div>
+                       <div><label style={labelStyle}>Fin</label><input type="datetime-local" style={inputStyle} value={toInput(form.end)} onChange={e=>setForm({...form, end: new Date(e.target.value)})}/></div>
+                    </div>
+
+                    <div style={{borderTop:`1px solid ${colors.border}`,paddingTop:'12px'}}>
+                       <button onClick={() => setShowRepeat(!showRepeat)} style={{display:'flex',alignItems:'center',gap:'4px',fontSize:'12px',color:colors.accent,backgroundColor:'transparent',border:'none',cursor:'pointer',marginBottom:'8px'}}><Repeat size={12}/> Repetición {form.repeat.type !== 'none' && '(Activa)'}</button>
+                       {showRepeat && (
+                         <div style={{padding:'12px',backgroundColor:colors.bgPrimary,borderRadius:'8px',border:`1px solid ${colors.border}`}}>
+                            <select style={{...inputStyle,marginBottom:'8px'}} value={form.repeat.type} onChange={e => setForm({...form, repeat: { ...form.repeat, type: e.target.value }})}>
+                               <option value="none">No repetir</option>
+                               <option value="daily">Diariamente</option>
+                               <option value="weekly">Semanalmente</option>
+                            </select>
+                            {form.repeat.type === 'weekly' && (
+                               <div style={{display:'flex',gap:'4px',flexWrap:'wrap'}}>
+                                  {DAYS_OF_WEEK.map((d, i) => (
+                                     <button key={i} onClick={() => {
+                                        const days = form.repeat.days || [];
+                                        const newDays = days.includes(i) ? days.filter(x => x !== i) : [...days, i];
+                                        setForm({...form, repeat: { ...form.repeat, days: newDays }});
+                                     }} style={{padding:'6px 10px',borderRadius:'4px',fontSize:'12px',border:'none',cursor:'pointer',backgroundColor:form.repeat.days?.includes(i)?colors.success:colors.bgTertiary,color:form.repeat.days?.includes(i)?colors.bgPrimary:colors.textMuted}}>{d}</button>
+                                  ))}
+                               </div>
+                            )}
+                         </div>
+                       )}
+                    </div>
+
+                    {/* UBICACIÓN Y CONTACTO - Solo para tipos específicos */}
+                    {requiresLocationContact && (
+                      <div style={{borderTop:`1px solid ${colors.border}`,paddingTop:'12px'}}>
+                         <h4 style={{fontSize:'11px',fontWeight:'bold',color:colors.textMuted,textTransform:'uppercase',marginBottom:'8px'}}>Ubicación y Contacto</h4>
+                         
+                         {/* UBICACIÓN */}
+                         <div style={{backgroundColor:colors.bgPrimary,padding:'12px',borderRadius:'8px',border:`1px solid ${colors.border}`,marginBottom:'12px'}}>
+                            <h5 style={{fontSize:'10px',fontWeight:'bold',color:colors.accent,marginBottom:'8px',display:'flex',alignItems:'center',gap:'4px'}}><MapPin size={10}/> Ubicación</h5>
+                            
+                            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'8px'}}>
+                              <div>
+                                <label style={labelStyle}>Provincia</label>
+                                <select 
+                                  value={locationData.provincia} 
+                                  onChange={e => handleProvinciaChange(e.target.value)}
+                                  style={{...inputStyle, padding:'6px'}}
+                                >
+                                  <option value="">Seleccione...</option>
+                                  {PROVINCIAS_CR.map(p => (
+                                    <option key={p.provincia} value={p.provincia}>{p.provincia}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label style={labelStyle}>Cantón</label>
+                                <select 
+                                  value={locationData.canton} 
+                                  onChange={e => handleCantonChange(e.target.value)}
+                                  disabled={!locationData.provincia}
+                                  style={{...inputStyle, padding:'6px'}}
+                                >
+                                  <option value="">Seleccione...</option>
+                                  {filteredCantones.map(c => (
+                                    <option key={c.canton} value={c.canton}>{c.canton}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            
+                            <div style={{marginBottom:'8px'}}>
+                              <label style={labelStyle}>Distrito</label>
+                              <select 
+                                value={locationData.distrito} 
+                                onChange={e => handleDistritoChange(e.target.value)}
+                                disabled={!locationData.canton}
+                                style={{...inputStyle, padding:'6px'}}
+                              >
+                                <option value="">Seleccione...</option>
+                                {filteredDistritos.map(d => (
+                                  <option key={d} value={d}>{d}</option>
+                                ))}
+                              </select>
+                            </div>
+                            
+                            <div style={{marginBottom:'8px'}}>
+                              <label style={labelStyle}>Otras señas</label>
+                              <textarea 
+                                value={locationData.otrasSenas} 
+                                onChange={e => handleLocationFieldChange('otrasSenas', e.target.value)}
+                                style={{...inputStyle, padding:'6px', height:'60px'}}
+                                placeholder="Detalles de la ubicación..."
+                              />
+                            </div>
+                            
+                            <div>
+                              <label style={labelStyle}>Enlace de ubicación (Waze o Maps)</label>
+                              <div style={{display:'flex', gap:'4px', marginBottom:'4px'}}>
+                                <input 
+                                  type="text" 
+                                  value={locationData.enlaceUbicacion} 
+                                  onChange={e => handleLocationFieldChange('enlaceUbicacion', e.target.value)}
+                                  style={{...inputStyle, padding:'6px', flex:1}}
+                                  placeholder="https://waze.com/ul/... o https://maps.app.goo.gl/..."
+                                />
+                                <button 
+                                  type="button"
+                                  onClick={copyLocationLink}
+                                  style={{padding:'6px 8px', backgroundColor:colors.bgTertiary, color:colors.textPrimary, border:`1px solid ${colors.border}`, borderRadius:'4px', cursor:'pointer', display:'flex', alignItems:'center', gap:'2px'}}
+                                  title="Copiar enlace"
+                                >
+                                  <Copy size={12}/>
+                                </button>
+                              </div>
+                              <div style={{display:'flex', gap:'4px'}}>
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    if (locationData.enlaceUbicacion) {
+                                      window.open(locationData.enlaceUbicacion, '_blank');
+                                    }
+                                  }}
+                                  disabled={!locationData.enlaceUbicacion}
+                                  style={{padding:'6px 12px', backgroundColor:colors.accent, color:colors.bgPrimary, border:'none', borderRadius:'4px', cursor:'pointer', flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', opacity: locationData.enlaceUbicacion ? 1 : 0.5}}
+                                >
+                                  <ExternalLink size={12}/> Abrir enlace
+                                </button>
+                              </div>
+                            </div>
+                         </div>
+                         
+                         {/* CONTACTOS */}
+                         <div style={{backgroundColor:colors.bgPrimary,padding:'12px',borderRadius:'8px',border:`1px solid ${colors.border}`}}>
+                            <h5 style={{fontSize:'10px',fontWeight:'bold',color:colors.accent,marginBottom:'8px',display:'flex',alignItems:'center',gap:'4px'}}><User size={10}/> Contactos</h5>
+                            
+                            {contacts.map((contact, index) => (
+                              <div key={index} style={{marginBottom:'12px', borderBottom:`1px solid ${colors.border}`, paddingBottom:'12px'}}>
+                                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px'}}>
+                                  <div>
+                                    <label style={labelStyle}>Nombre</label>
+                                    <input 
+                                      type="text" 
+                                      value={contact.nombre} 
+                                      onChange={e => handleContactChange(index, 'nombre', e.target.value)}
+                                      style={{...inputStyle, padding:'6px'}}
+                                      placeholder="Nombre completo"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label style={labelStyle}>Teléfono</label>
+                                    <input 
+                                      type="text" 
+                                      value={contact.telefono} 
+                                      onChange={e => handleContactChange(index, 'telefono', e.target.value)}
+                                      style={{...inputStyle, padding:'6px'}}
+                                      placeholder="Número telefónico"
+                                    />
+                                  </div>
+                                </div>
+                                {contacts.length > 1 && (
+                                  <button 
+                                    type="button"
+                                    onClick={() => removeContact(index)}
+                                    style={{marginTop:'8px', padding:'4px 8px', backgroundColor:colors.danger, color:colors.bgPrimary, border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'10px', display:'flex', alignItems:'center', gap:'2px'}}
+                                  >
+                                    <Trash2 size={10}/> Eliminar contacto
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                            
+                            {contacts.length < 2 && (
+                              <button 
+                                type="button"
+                                onClick={addContact}
+                                style={{padding:'6px 12px', backgroundColor:colors.bgTertiary, color:colors.textPrimary, border:`1px solid ${colors.border}`, borderRadius:'4px', cursor:'pointer', display:'flex', alignItems:'center', gap:'4px'}}
+                              >
+                                <Plus size={12}/> Agregar segundo contacto
+                              </button>
+                            )}
+                         </div>
+                      </div>
+                    )}
+
+                    {typeInfo?.logistics && (
+                      <div style={{borderTop:`1px solid ${colors.border}`,paddingTop:'12px'}}>
+                         <h4 style={{fontSize:'11px',fontWeight:'bold',color:colors.textMuted,textTransform:'uppercase',marginBottom:'8px'}}>Logística</h4>
+                         <div style={{backgroundColor:colors.bgPrimary,padding:'12px',borderRadius:'8px',border:`1px solid ${colors.border}`}}>
+                            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px',marginBottom:'12px'}}>
+                              <label style={{display:'flex',alignItems:'center',gap:'8px',fontSize:'12px',color:colors.textSecondary}}><input type="checkbox" checked={form.logistics.requiereVehiculo} onChange={e => setForm({...form, logistics: {...form.logistics, requiereVehiculo: e.target.checked}})}/> Vehículo</label>
+                              <label style={{display:'flex',alignItems:'center',gap:'8px',fontSize:'12px',color:colors.textSecondary}}><input type="checkbox" checked={form.logistics.dobleTraccion} onChange={e => setForm({...form, logistics: {...form.logistics, dobleTraccion: e.target.checked}})}/> Doble Tracción</label>
+                              <label style={{display:'flex',alignItems:'center',gap:'8px',fontSize:'12px',color:colors.textSecondary}}><input type="checkbox" checked={form.logistics.tarjetaRuedo} onChange={e => setForm({...form, logistics: {...form.logistics, tarjetaRuedo: e.target.checked}})}/> Tarjeta Ruedo</label>
+                            </div>
+                            
+                            <div style={{borderTop:`1px solid ${colors.border}`,paddingTop:'8px'}}>
+                              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px'}}>
+                                  <h5 style={{fontSize:'10px',fontWeight:'bold',color:colors.textSecondary,margin:0}}>VIÁTICOS</h5>
+                                  <span style={{fontSize:'11px',fontWeight:'bold',color:colors.success}}>{formatMoney(currentCost)}</span>
+                              </div>
+                              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:'8px'}}>
+                                {['Desayuno', 'Almuerzo', 'Cena', 'Hospedaje'].map(v => (
+                                   <label key={v} style={{display:'flex',alignItems:'center',gap:'8px',fontSize:'12px',color:colors.textSecondary}}>
+                                     <input type="checkbox" checked={(form.logistics.viaticos || []).includes(v)} onChange={e => {
+                                       const current = form.logistics.viaticos || [];
+                                       let updated = e.target.checked ? [...current, v] : current.filter(x => x !== v);
+                                       if(!e.target.checked && v === 'Hospedaje') {
+                                           // Clear lodging data if unchecked
+                                           setForm({...form, logistics: {...form.logistics, viaticos: updated, lodgingLocation: null, lodgingCost: 0}});
+                                           setSelectedProvincia(''); setSelectedCanton(''); setSelectedDistrito('');
+                                       } else {
+                                           setForm({...form, logistics: {...form.logistics, viaticos: updated}});
+                                       }
+                                     }}/> {v}
+                                   </label>
+                                ))}
+                              </div>
+                              
+                              {/* SELECCIÓN DE HOSPEDAJE */}
+                              {form.logistics.viaticos && form.logistics.viaticos.includes('Hospedaje') && lodgingRates && lodgingRates.length > 0 && (
+                                  <div style={{marginTop:'12px', padding:'10px', backgroundColor:colors.bgSecondary, borderRadius:'6px', border:`1px solid ${colors.accent}`}}>
+                                      <h5 style={{fontSize:'10px',fontWeight:'bold',color:colors.accent,marginBottom:'8px',display:'flex',alignItems:'center',gap:'4px'}}><MapPin size={10}/> Destino Hospedaje</h5>
+                                      <div style={{display:'grid', gap:'8px'}}>
+                                          <select value={selectedProvincia} onChange={e => { setSelectedProvincia(e.target.value); setSelectedCanton(''); setSelectedDistrito(''); }} style={{padding:'6px', fontSize:'11px', borderRadius:'4px', border:`1px solid ${colors.border}`, backgroundColor:colors.bgPrimary, color:colors.textPrimary}}>
+                                              <option value="">Provincia...</option>
+                                              {uniqueProvincias.map(p => <option key={p} value={p}>{p}</option>)}
+                                          </select>
+                                          <select value={selectedCanton} onChange={e => { setSelectedCanton(e.target.value); setSelectedDistrito(''); }} disabled={!selectedProvincia} style={{padding:'6px', fontSize:'11px', borderRadius:'4px', border:`1px solid ${colors.border}`, backgroundColor:colors.bgPrimary, color:colors.textPrimary}}>
+                                              <option value="">Cantón...</option>
+                                              {filteredLodgingCantons.map(c => <option key={c} value={c}>{c}</option>)}
+                                          </select>
+                                          <select value={selectedDistrito} onChange={e => handleLodgingChange(e.target.value)} disabled={!selectedCanton} style={{padding:'6px', fontSize:'11px', borderRadius:'4px', border:`1px solid ${colors.border}`, backgroundColor:colors.bgPrimary, color:colors.textPrimary}}>
+                                              <option value="">Distrito...</option>
+                                              {filteredLodgingDistricts.map(d => <option key={d} value={d}>{d}</option>)}
+                                          </select>
+                                      </div>
+                                      {form.logistics.lodgingCost > 0 && (
+                                          <div style={{marginTop:'8px', fontSize:'11px', color:colors.success, textAlign:'right'}}>Tarifa: {formatMoney(form.logistics.lodgingCost)}</div>
+                                      )}
+                                  </div>
+                              )}
+                            </div>
+                            
+                            <div style={{marginTop:'12px'}}>
+                              <label style={{fontSize:'10px',fontWeight:'bold',color:colors.textSecondary}}>Código PP</label>
+                              <input list="ppCodesList" type="text" style={{...inputStyle,marginTop:'4px',padding:'6px'}} value={form.logistics.codigoPP} onChange={e => setForm({...form, logistics: {...form.logistics, codigoPP: e.target.value}})}/>
+                              <datalist id="ppCodesList">
+                                  {ppCodes.map((pp, i) => <option key={i} value={typeof pp === 'string' ? pp : pp.code} label={typeof pp === 'string' ? '' : pp.description} />)}
+                              </datalist>
+                            </div>
+                         </div>
+                      </div>
+                    )}
+
+                    <div>
+                       <label style={labelStyle}>Observaciones</label>
+                       <textarea style={{...inputStyle,height:'80px',resize:'vertical'}} value={form.observations} onChange={e=>setForm({...form, observations: e.target.value})}></textarea>
+                    </div>
+                    <div style={{paddingTop:'16px',display:'flex',justifyContent:'flex-end',gap:'8px'}}>
+                       <button onClick={onClose} style={{padding:'10px 20px',backgroundColor:'transparent',border:'none',color:colors.textMuted,cursor:'pointer'}}>Cancelar</button>
+                       {!isNew && form.status !== 'in_progress' && (
+                           <button onClick={() => { onSave({ ...form, activityTypeName: typeInfo?.name || 'Actividad', status: 'in_progress' }); }} style={{padding:'10px 20px',backgroundColor:colors.accent,color:colors.bgPrimary,fontWeight:'bold',borderRadius:'6px',border:'none',cursor:'pointer', display:'flex', alignItems:'center', gap:'6px'}}><PlayCircle size={16}/> Iniciar</button>
+                       )}
+                       <button onClick={() => handleSave()} style={{padding:'10px 20px',backgroundColor:colors.success,color:colors.bgPrimary,fontWeight:'bold',borderRadius:'6px',border:'none',cursor:'pointer', display:'flex', alignItems:'center', gap:'4px'}}><Save size={16}/> Guardar</button>
+                    </div>
+                 </div>
+              </Modal>
+           );
+        };
+
+        const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, onImportBackup, activityTypes, viaticumRates }) => {
+          const [activeTab, setActiveTab] = useState('prog_real');
+          const [executedStart, setExecutedStart] = useState('');
+          const [executedEnd, setExecutedEnd] = useState('');
+          const [scheduledStart, setScheduledStart] = useState('');
+          const [scheduledEnd, setScheduledEnd] = useState('');
+          const [teleworkStart, setTeleworkStart] = useState('');
+          const [teleworkEnd, setTeleworkEnd] = useState('');
+          const fileInputRef = useRef(null);
+
+          useEffect(() => {
+            if (isOpen) {
+              const today = new Date();
+              const todayStr = toISODateString(today);
+              
+              // Función para verificar si es día hábil
+              const isWorkingDay = (date) => {
+                const day = date.getDay();
+                const isoDate = toISODateString(date);
+                const isHoliday = HOLIDAYS_CR_2026.some(h => h.date === isoDate);
+                return day !== 0 && day !== 6 && !isHoliday;
+              };
+
+              // ========== CORRECCIÓN PARA ACTIVIDADES REALIZADAS ==========
+              // Hasta: último día hábil anterior (excluyendo hoy)
+              let lastWorkingDay = new Date(today);
+              lastWorkingDay.setDate(lastWorkingDay.getDate() - 1);
+              
+              // Retroceder hasta encontrar un día hábil
+              while (!isWorkingDay(lastWorkingDay)) {
+                lastWorkingDay.setDate(lastWorkingDay.getDate() - 1);
+              }
+
+              // Desde
