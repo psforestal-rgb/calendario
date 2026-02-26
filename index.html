@@ -1835,4 +1835,14 @@
                 lastWorkingDay.setDate(lastWorkingDay.getDate() - 1);
               }
 
-              // Desde
+              // Desde: El lunes de la semana del "lastWorkingDay"
+              let previousMonday = new Date(lastWorkingDay);
+              const dayOfWeek = previousMonday.getDay();
+              // Cálculo correcto para obtener el lunes
+              const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+              previousMonday.setDate(previousMonday.getDate() + diffToMonday);
+              
+              // Asegurar que el lunes también sea hábil
+              while (!isWorkingDay(previousMonday)) {
+                previousMonday.setDate(previousMonday.getDate() - 1);
+              }
