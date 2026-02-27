@@ -1846,3 +1846,115 @@
               while (!isWorkingDay(previousMonday)) {
                 previousMonday.setDate(previousMonday.getDate() - 1);
               }
+
+              // Set the dates for executed (realizadas) range
+              setExecutedStart(toISODateString(previousMonday));
+              setExecutedEnd(toISODateString(lastWorkingDay));
+
+              // Calcular rango para actividades programadas (lunes a viernes de esta semana)
+              const scheduledMonday = new Date(today);
+              scheduledMonday.setDate(today.getDate() - (today.getDay() === 0 ? 6 : today.getDay() - 1));
+              const scheduledFriday = new Date(scheduledMonday);
+              scheduledFriday.setDate(scheduledMonday.getDate() + 4);
+              setScheduledStart(toISODateString(scheduledMonday));
+              setScheduledEnd(toISODateString(scheduledFriday));
+
+              // Rango para teletrabajo (mes actual)
+              const teleworkMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+              const teleworkMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+              setTeleworkStart(toISODateString(teleworkMonthStart));
+              setTeleworkEnd(toISODateString(teleworkMonthEnd));
+            }
+          }, [isOpen]);
+
+          const tabStyle = (isActive) => ({
+            padding: '10px 16px', borderRadius: '8px 8px 0 0', fontWeight: 'bold', cursor: 'pointer', border: 'none',
+            backgroundColor: isActive ? colors.bgPrimary : 'transparent', color: isActive ? colors.accent : colors.textMuted,
+            borderBottom: isActive ? `2px solid ${colors.accent}` : 'none'
+          });
+
+          return (
+            <Modal isOpen={isOpen} onClose={onClose} title="Reportes" size="lg" colors={colors}>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: `1px solid ${colors.border}`, paddingBottom: '8px' }}>
+                <button onClick={() => setActiveTab('prog_real')} style={tabStyle(activeTab === 'prog_real')}>Programado vs Realizado</button>
+                <button onClick={() => setActiveTab('teletrabajo')} style={tabStyle(activeTab === 'teletrabajo')}>Teletrabajo</button>
+                <button onClick={() => setActiveTab('exportar')} style={tabStyle(activeTab === 'exportar')}>Exportar/Importar</button>
+              </div>
+
+              {activeTab === 'prog_real' && (
+                <div>
+                  <h4 style={{ color: colors.accent, marginBottom: '12px' }}>Actividades Programadas vs Realizadas</h4>
+                  <p style={{ fontSize: '12px', color: colors.textMuted }}>Rango: {executedStart} a {executedEnd}</p>
+                  {/* Aquí irá el reporte detallado */}
+                </div>
+              )}
+
+              {activeTab === 'teletrabajo' && (
+                <div>
+                  <h4 style={{ color: colors.accent, marginBottom: '12px' }}>Reporte de Teletrabajo</h4>
+                  <p style={{ fontSize: '12px', color: colors.textMuted }}>Rango: {teleworkStart} a {teleworkEnd}</p>
+                  {/* Aquí irá el reporte de teletrabajo */}
+                </div>
+              )}
+
+              {activeTab === 'exportar' && (
+                <div>
+                  <h4 style={{ color: colors.accent, marginBottom: '12px' }}>Exportar/Importar Datos</h4>
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => {
+                        // Exportar a Excel
+                        const wb = XLSX.utils.book_new();
+                        const ws_data = [['Fecha', 'Actividad', 'Subtipo', 'Inicio', 'Fin', 'Estado', 'Costo']];
+                        tasks.forEach(t => {
+                          const row = [
+                            toISODateString(new Date(t.start)),
+                            activityTypes.find(at => at.id === t.typeId)?.name || '',
+                            t.subtipo || '',
+                            new Date(t.start).toLocaleTimeString(),
+                            new Date(t.end).toLocaleTimeString(),
+                            t.status,
+                            calculateTaskCost(t, viaticumRates)
+                          ];
+                          ws_data.push(row);
+                        });
+                        const ws = XLSX.utils.aoa_to_sheet(ws_data);
+                        XLSX.utils.book_append_sheet(wb, ws, 'Actividades');
+                        XLSX.writeFile(wb, 'backup_actividades.xlsx');
+                      }}
+                      style={{ padding: '8px 16px', backgroundColor: colors.success, color: colors.bgPrimary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                    >
+                      Exportar a Excel
+                    </button>
+                    <button
+                      onClick={() => fileInputRef.current.click()}
+                      style={{ padding: '8px 16px', backgroundColor: colors.accent, color: colors.bgPrimary, border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                    >
+                      Importar respaldo
+                    </button>
+                    <input type="file" ref={fileInputRef} accept=".xlsx,.json" style={{ display: 'none' }} onChange={onImportBackup} />
+                  </div>
+                </div>
+              )}
+            </Modal>
+          );
+        };
+
+        // ============================================================================
+        // COMPONENTE PRINCIPAL App (INCOMPLETO EN EL ARCHIVO ORIGINAL)
+        // A CONTINUACIÓN DEBE IR EL CÓDIGO DE LA APLICACIÓN PRINCIPAL.
+        // COMO NO SE PROPORCIONÓ, SE DEJA UN MARCADOR PARA QUE LO INTEGRES.
+        // ============================================================================
+
+        const App = () => {
+          // TODO: Implementar el componente App completo según tu código original.
+          // Este es solo un placeholder para que el archivo sea sintácticamente válido.
+          return <div>Cargando aplicación...</div>;
+        };
+
+        // Renderizar la aplicación
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
