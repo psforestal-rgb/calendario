@@ -47,6 +47,59 @@
         }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        /* ========== RESPONSIVE SMARTPHONE ========== */
+        @media (max-width: 768px) {
+          body { overflow: auto; }
+          #root { height: auto; min-height: 100vh; }
+
+          /* Sidebar como overlay fullscreen en mobile */
+          .mobile-sidebar-overlay {
+            position: fixed !important;
+            inset: 0 !important;
+            z-index: 55 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            background-color: inherit;
+          }
+
+          /* Calendar grid: 1 col on very small, 2 cols on medium-small */
+          .calendar-grid-responsive {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+
+          /* Ocultar elementos no esenciales en header mobile */
+          .hide-on-mobile { display: none !important; }
+
+          /* Header mobile adjustments */
+          .header-responsive {
+            flex-wrap: wrap !important;
+            padding: 8px !important;
+            gap: 6px !important;
+            overflow-x: visible !important;
+          }
+
+          /* Asegurar que modals funcionen bien en mobile */
+          .modal-responsive {
+            padding: 8px !important;
+            max-height: 100vh !important;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .calendar-grid-responsive {
+            grid-template-columns: 1fr !important;
+          }
+        }
+
+        /* ========== MEJORAR LEGIBILIDAD GENERAL ========== */
+        /* Mínimo tamaño de toque para accesibilidad (44px recomendado) */
+        @media (pointer: coarse) {
+          button, [role="button"] {
+            min-height: 36px;
+            min-width: 36px;
+          }
+        }
     </style>
 </head>
 <body>
@@ -413,15 +466,16 @@
         // --- COMPONENTES UI ---
         const Modal = ({ isOpen, onClose, title, children, size = 'md', colors }) => {
           if (!isOpen) return null;
-          
+          const isMobileModal = typeof window !== 'undefined' && window.innerWidth <= 768;
+
           return (
-            <div style={{position:'fixed',inset:0,zIndex:60,display:'flex',alignItems:'center',justifyContent:'center',backgroundColor:'rgba(0,0,0,0.85)',padding:'16px'}}>
-              <div style={{backgroundColor:colors.bgSecondary,borderRadius:'12px',border:`1px solid ${colors.border}`,boxShadow:'0 25px 50px -12px rgba(0,0,0,0.5)',width:'100%',maxWidth:size==='sm'?'400px':size==='lg'?'900px':size==='xl'?'1100px':'600px',maxHeight:'90vh',display:'flex',flexDirection:'column',color:colors.textSecondary}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'16px',borderBottom:`1px solid ${colors.border}`,backgroundColor:colors.bgPrimary}}>
-                  <h2 style={{fontSize:'18px',fontWeight:'bold',color:colors.accent}}>{title}</h2>
-                  <button onClick={onClose} style={{padding:'4px',borderRadius:'50%',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted}}><X size={20} /></button>
+            <div className="modal-responsive" style={{position:'fixed',inset:0,zIndex:60,display:'flex',alignItems: isMobileModal ? 'flex-end' : 'center',justifyContent:'center',backgroundColor:'rgba(0,0,0,0.85)',padding: isMobileModal ? '0' : '16px'}}>
+              <div style={{backgroundColor:colors.bgSecondary,borderRadius: isMobileModal ? '16px 16px 0 0' : '12px',border:`1px solid ${colors.border}`,boxShadow:'0 25px 50px -12px rgba(0,0,0,0.5)',width:'100%',maxWidth: isMobileModal ? '100%' : size==='sm'?'400px':size==='lg'?'900px':size==='xl'?'1100px':'600px',maxHeight: isMobileModal ? '92vh' : '90vh',display:'flex',flexDirection:'column',color:colors.textSecondary}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding: isMobileModal ? '14px 16px' : '16px',borderBottom:`1px solid ${colors.border}`,backgroundColor:colors.bgPrimary,borderRadius: isMobileModal ? '16px 16px 0 0' : '12px 12px 0 0'}}>
+                  <h2 style={{fontSize: isMobileModal ? '16px' : '18px',fontWeight:'bold',color:colors.accent}}>{title}</h2>
+                  <button onClick={onClose} style={{padding:'8px',borderRadius:'50%',backgroundColor:colors.bgTertiary,border:'none',cursor:'pointer',color:colors.textMuted}}><X size={20} /></button>
                 </div>
-                <div style={{padding:'20px',overflowY:'auto',flex:1}}>
+                <div style={{padding: isMobileModal ? '16px' : '20px',overflowY:'auto',flex:1,WebkitOverflowScrolling:'touch'}}>
                   {children}
                 </div>
               </div>
@@ -915,22 +969,26 @@
           );
         };
 
-        // --- INDICADOR DE SINCRONIZACIÓN POR TAREA (estilo WhatsApp) ---
-        const SyncIndicator = ({ taskId, taskSyncMap, lastBackupAt, onForceSync, colors, size = 10 }) => {
+        // --- INDICADOR DE SINCRONIZACIÓN POR TAREA (estilo WhatsApp mejorado) ---
+        const SyncIndicator = ({ taskId, taskSyncMap, lastBackupAt, onForceSync, colors, size = 14 }) => {
           const info = taskSyncMap[taskId];
           const status = info?.status || 'synced';
           const syncedAt = info?.at;
           const isBackedUp = lastBackupAt && syncedAt && syncedAt <= lastBackupAt;
 
-          // Colores según estado
           const isSaving = status === 'saving';
           const isError = status === 'error';
           const isSynced = status === 'synced';
 
           const color = isSaving ? (colors.warning || '#ED8936')
                       : isError ? (colors.danger || '#E53E3E')
-                      : isBackedUp ? '#3B82F6'
+                      : isBackedUp ? '#60A5FA'
                       : (colors.success || '#48BB78');
+
+          const bgColor = isSaving ? `${colors.warning || '#ED8936'}18`
+                        : isError ? `${colors.danger || '#E53E3E'}18`
+                        : isBackedUp ? '#60A5FA18'
+                        : `${colors.success || '#48BB78'}18`;
 
           const title = isSaving ? 'Guardando en Firebase...'
                       : isError ? 'Error al sincronizar — clic para reintentar'
@@ -942,26 +1000,41 @@
             if (onForceSync) onForceSync(taskId);
           };
 
+          // Tamaño mínimo accesible para zona de toque
+          const touchSize = Math.max(size + 10, 24);
+          const iconSize = Math.max(size, 12);
+
           return (
             <span
               onClick={handleClick}
               title={title}
+              aria-label={title}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick(e); } }}
               style={{
-                display:'inline-flex',alignItems:'center',cursor:'pointer',
-                flexShrink:0,opacity: isSaving ? 0.7 : 1,
-                animation: isSaving ? 'pulseDot 1s infinite' : 'none',
-                lineHeight:1
+                display:'inline-flex',alignItems:'center',justifyContent:'center',
+                cursor:'pointer',flexShrink:0,
+                width:`${touchSize}px`,height:`${touchSize}px`,
+                borderRadius:'50%',
+                backgroundColor: bgColor,
+                opacity: isSaving ? 0.85 : 1,
+                animation: isSaving ? 'pulseDot 1.2s ease-in-out infinite' : 'none',
+                lineHeight:1,
+                transition:'background-color 0.2s ease, transform 0.15s ease',
               }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.15)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
             >
-              {isSaving && <RefreshCw size={size} color={color} style={{animation:'spin 1s linear infinite'}}/>}
-              {isError && <AlertCircle size={size} color={color}/>}
-              {isSynced && !isBackedUp && <CheckCircle size={size} color={color}/>}
-              {isSynced && isBackedUp && <CheckCheck size={size} color={color}/>}
+              {isSaving && <RefreshCw size={iconSize} color={color} style={{animation:'spin 1s linear infinite'}} strokeWidth={2.5}/>}
+              {isError && <AlertCircle size={iconSize} color={color} strokeWidth={2.5}/>}
+              {isSynced && !isBackedUp && <CheckCircle size={iconSize} color={color} strokeWidth={2.5}/>}
+              {isSynced && isBackedUp && <CheckCheck size={iconSize} color={color} strokeWidth={2.5}/>}
             </span>
           );
         };
 
-        const CalendarCell = ({ day, tasks, currentDate, dayTag, markers, onToggleTag, onSelectDay, onAddTask, onEditTask, isSelected, onDrop, colors, activityTypes, isMonthOverBudget, viaticumRates, taskSyncMap, lastBackupAt, onForceSync }) => {
+        const CalendarCell = ({ day, tasks, currentDate, dayTag, markers, onToggleTag, onSelectDay, onAddTask, onEditTask, isSelected, onDrop, colors, activityTypes, isMonthOverBudget, viaticumRates, taskSyncMap, lastBackupAt, onForceSync, isMobile }) => {
           const dayStr = toISODateString(day);
           const dayTasks = tasks
             .filter(t => toISODateString(new Date(t.start)) === dayStr)
@@ -1001,7 +1074,7 @@
               onDragOver={handleDragOver}
               onDrop={handleDropEvent}
               style={{
-                minHeight:'200px',position:'relative',padding:'4px',display:'flex',flexDirection:'column',gap:'4px',
+                minHeight: isMobile ? '120px' : '200px',position:'relative',padding:'6px',display:'flex',flexDirection:'column',gap:'4px',
                 borderBottom:`1px solid ${colors.border}`,borderRight:`1px solid ${colors.border}`,
                 backgroundColor:bgColor,opacity:isCurrentMonth?1:0.5,
                 outline:isSelected?`2px solid ${colors.success}`:'none',cursor:'pointer'
@@ -1009,14 +1082,22 @@
             >
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
                  <div style={{display:'flex',alignItems:'center',gap:'4px',flexWrap:'wrap'}}>
-                    <span 
+                    <span
                       onClick={(e) => { e.stopPropagation(); onToggleTag(); }}
                       style={{
-                        fontSize:'16px',fontWeight:'700',borderRadius:'4px',padding:'2px 6px',cursor:'pointer',
+                        fontSize:'16px',fontWeight:'700',borderRadius:'6px',padding:'2px 8px',cursor:'pointer',
                         backgroundColor:isToday?colors.success:'transparent',
-                        color:isToday?colors.bgPrimary:colors.textPrimary
+                        color:isToday?colors.bgPrimary:colors.textPrimary,
+                        display:'inline-flex',alignItems:'center',gap:'4px',
+                        minHeight:'28px'
                       }}
-                    >{day.getDate()}</span>
+                    >
+                      <span className="hide-on-mobile" style={{display:'none'}}></span>
+                      {isMobile && (
+                        <span style={{fontSize:'10px',fontWeight:'600',opacity:0.7,textTransform:'uppercase'}}>{DAYS_OF_WEEK[day.getDay()]}</span>
+                      )}
+                      {day.getDate()}
+                    </span>
                     {hasOverlap && <span title="Actividades traslapadas en este día" style={{color:colors.danger,display:'flex',alignItems:'center',cursor:'help'}}><AlertTriangle size={16} /></span>}
                     <div style={{display:'flex',gap:'2px',flexWrap:'wrap'}}>
                        {dayMarkers.map((m, i) => {
@@ -1046,7 +1127,7 @@
                         onDragStart={(e) => e.dataTransfer.setData('taskId', t.id)}
                         onClick={(e) => { e.stopPropagation(); onEditTask(t); }} 
                         style={{
-                          fontSize:'10px',padding:'3px 5px',borderRadius:'3px',borderLeft:`3px solid ${ti?.color || colors.border}`,
+                          fontSize:'11px',padding:'4px 6px',borderRadius:'4px',borderLeft:`3px solid ${ti?.color || colors.border}`,
                           cursor:'pointer',overflow:'hidden',display:'flex',alignItems:'flex-start',gap:'3px',
                           backgroundColor:t.status === 'completed' ? colors.bgTertiary : t.status === 'in_progress' ? `${colors.success}22` : colors.bgPrimary,
                           color:t.status === 'completed' ? colors.textMuted : colors.textPrimary,
@@ -1063,7 +1144,7 @@
                            <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ti?.name || t.activityTypeName || 'Actividad'}</span>
                            {t.fieldData?.expediente && <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:'9px',opacity:0.7}}>{t.fieldData.expediente}</span>}
                          </div>
-                         <SyncIndicator taskId={t.id} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={onForceSync} colors={colors} size={8}/>
+                         <SyncIndicator taskId={t.id} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={onForceSync} colors={colors} size={10}/>
                       </div>
                     );
                  })}
@@ -1455,9 +1536,9 @@
                     
                     {/* Indicador de sincronización */}
                     {!isNew && task?.id && (
-                      <div style={{display:'flex',alignItems:'center',gap:'8px',padding:'6px 10px',backgroundColor:colors.bgTertiary,borderRadius:'6px',fontSize:'11px',color:colors.textMuted}}>
-                        <SyncIndicator taskId={task.id} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={onForceSync} colors={colors} size={14}/>
-                        <span>{(() => {
+                      <div style={{display:'flex',alignItems:'center',gap:'10px',padding:'8px 12px',backgroundColor:colors.bgTertiary,borderRadius:'8px',fontSize:'12px',color:colors.textSecondary}}>
+                        <SyncIndicator taskId={task.id} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={onForceSync} colors={colors} size={16}/>
+                        <span style={{fontWeight:'500'}}>{(() => {
                           const info = taskSyncMap[task.id];
                           const st = info?.status || 'synced';
                           const backed = lastBackupAt && info?.at && info.at <= lastBackupAt;
@@ -5193,6 +5274,7 @@ CLOSE_SCRIPT_TAG
           const [isDarkMode, setIsDarkMode] = useState(true);
           const colors = isDarkMode ? DARK_THEME : LIGHT_THEME;
           const [currentTime, setCurrentTime] = useState(new Date());
+          const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
           const [scheduleAlert, setScheduleAlert] = useState(null);
           const alertedTasks = useRef(new Set());
           const [showResumePrompt, setShowResumePrompt] = useState(false);
@@ -5213,6 +5295,7 @@ CLOSE_SCRIPT_TAG
           const [editingTask, setEditingTask] = useState(null);
 
           useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(timer); }, []);
+          useEffect(() => { const handleResize = () => setWindowWidth(window.innerWidth); window.addEventListener('resize', handleResize); return () => window.removeEventListener('resize', handleResize); }, []);
 
           // === AUTO-PAUSA A LAS 16:00 ===
           const autoPausedToday = useRef(false);
@@ -5410,12 +5493,15 @@ CLOSE_SCRIPT_TAG
               return { isOver: spent > limit, remaining: limit - spent };
           };
 
+          // Detectar si es mobile (reactivo al redimensionar)
+          const isMobile = windowWidth <= 768;
+
           return (
             <div style={{display:'flex',height:'100vh',flexDirection:'column',backgroundColor:colors.bgPrimary,color:colors.textSecondary,fontFamily:'system-ui, sans-serif',overflow:'hidden', transition: 'background-color 0.3s ease'}}>
-              <header style={{flexShrink:0,zIndex:50,backgroundColor:colors.bgSecondary,borderBottom:`1px solid ${colors.border}`,padding:'8px 12px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:'8px',overflowX: 'auto'}}>
+              <header className="header-responsive" style={{flexShrink:0,zIndex:50,backgroundColor:colors.bgSecondary,borderBottom:`1px solid ${colors.border}`,padding:'8px 12px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:'8px',overflowX: 'auto'}}>
                  <div style={{display:'flex',alignItems:'center',gap:'8px', flexShrink: 0}}>
                     <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{padding:'8px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px', flexShrink: 0}}><Menu size={20}/></button>
-                    <div style={{paddingLeft:'8px',borderLeft:`2px solid ${colors.border}`, flexShrink: 0}}>
+                    <div className="hide-on-mobile" style={{paddingLeft:'8px',borderLeft:`2px solid ${colors.border}`, flexShrink: 0}}>
                        <div style={{display:'flex',alignItems:'center',gap:'8px',color:colors.textMuted,fontSize:'9px',fontWeight:'bold',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'1px', whiteSpace: 'nowrap'}}>
                           <svg viewBox="0 0 500 300" style={{width:'50px', height:'30px', borderRadius:'2px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'}} preserveAspectRatio="none"><rect width="500" height="300" fill="#002b7f"/><rect y="50" width="500" height="200" fill="#ffffff"/><rect y="100" width="500" height="100" fill="#ce1126"/></svg>
                           <div style={{display: 'flex', flexDirection: 'column'}}><div style={{color:colors.textMuted, fontSize:'9px', fontWeight:'bold', textTransform:'uppercase', letterSpacing:'2px', lineHeight: '1.1'}}>Calendario SINAC</div><h2 style={{fontWeight:'bold', color:colors.accent, fontSize:'14px', margin:0, whiteSpace: 'nowrap', lineHeight: '1.2'}}>Ing. Pablo César Sánchez Núñez</h2></div>
@@ -5423,21 +5509,21 @@ CLOSE_SCRIPT_TAG
                     </div>
                  </div>
 
-                 <div style={{display:'flex',alignItems:'center',gap:'2px', flexShrink: 0, position:'absolute', left:'50%', transform:'translateX(-50%)'}}>
+                 <div style={{display:'flex',alignItems:'center',gap:'2px', flexShrink: 0, position: isMobile ? 'static' : 'absolute', left: isMobile ? undefined : '50%', transform: isMobile ? 'none' : 'translateX(-50%)'}}>
                     <button onClick={() => { setCurrentDate(new Date()); setSelectedDay(new Date()); }} style={{padding:'6px',backgroundColor:colors.bgTertiary,border:`1px solid ${colors.border}`,borderRadius:'6px',cursor:'pointer',color:colors.success}} title="Hoy"><Calendar size={14}/></button>
-                    <button onClick={() => { const d = new Date(currentDate); d.setMonth(d.getMonth()-1); setCurrentDate(d); }} style={{padding:'4px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'50%'}}><ChevronLeft size={18}/></button>
-                    <h1 style={{fontSize:'14px',fontWeight:'bold',color:colors.accent,minWidth:'110px',textAlign:'center',textTransform:'capitalize',margin:0, whiteSpace: 'nowrap'}}>{currentDate.toLocaleString('es-ES', { month: 'long' })} {currentDate.getFullYear()}</h1>
-                    <button onClick={() => { const d = new Date(currentDate); d.setMonth(d.getMonth()+1); setCurrentDate(d); }} style={{padding:'4px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'50%'}}><ChevronRight size={18}/></button>
+                    <button onClick={() => { const d = new Date(currentDate); d.setMonth(d.getMonth()-1); setCurrentDate(d); }} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'50%'}}><ChevronLeft size={20}/></button>
+                    <h1 style={{fontSize: isMobile ? '13px' : '14px',fontWeight:'bold',color:colors.accent,minWidth: isMobile ? '90px' : '110px',textAlign:'center',textTransform:'capitalize',margin:0, whiteSpace: 'nowrap'}}>{currentDate.toLocaleString('es-ES', { month: 'long' })} {currentDate.getFullYear()}</h1>
+                    <button onClick={() => { const d = new Date(currentDate); d.setMonth(d.getMonth()+1); setCurrentDate(d); }} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'50%'}}><ChevronRight size={20}/></button>
                  </div>
 
-                 <div style={{display:'flex',alignItems:'center',gap:'6px', flexShrink: 0}}>
+                 <div style={{display:'flex',alignItems:'center',gap:'6px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end'}}>
                     {isOffline ? <WifiOff size={16} color={colors.danger} title="Sin conexión (Modo Offline)" /> : <Wifi size={16} color={colors.success} title="Conectado y Sincronizado" />}
-                    <div style={{position:'relative'}}>
+                    <div className="hide-on-mobile" style={{position:'relative'}}>
                       <Search size={14} style={{position:'absolute',left:'8px',top:'50%',transform:'translateY(-50%)',color:colors.textMuted}}/>
                       <input type="text" placeholder="Buscar..." style={inputStyle} value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
                       {searchQuery && <button onClick={() => setSearchQuery('')} style={{position:'absolute',right:'6px',top:'50%',transform:'translateY(-50%)',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted}}><X size={12}/></button>}
                     </div>
-                    
+
                     <button onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)} style={{padding:'6px',borderRadius:'6px',cursor:'pointer',border:'none',backgroundColor:(isFilterPanelOpen || filterType !== 'all' || filterStartDate || filterEndDate) ? colors.success : colors.bgTertiary,color:(isFilterPanelOpen || filterType !== 'all' || filterStartDate || filterEndDate) ? colors.bgPrimary : colors.textMuted}} title="Filtros"><Filter size={16}/></button>
                     {isFilterPanelOpen && ( /* ... existing filter panel ... */ null )}
 
@@ -5445,23 +5531,33 @@ CLOSE_SCRIPT_TAG
                     <button onClick={() => setIsConfigModalOpen(true)} style={{padding:'6px',borderRadius:'6px',cursor:'pointer',border:'none',backgroundColor:colors.bgTertiary,color:colors.textMuted}} title="Configuración"><Settings size={16}/></button>
 
                     {/* TRASH BUTTON */}
-                    <button onClick={() => setIsTrashModalOpen(true)} style={{padding:'6px',borderRadius:'6px',cursor:'pointer',border:'none',backgroundColor:trashTasks.length > 0 ? `${colors.warning}22` : colors.bgTertiary,color:trashTasks.length > 0 ? colors.warning : colors.textMuted, position:'relative'}} title="Papelera">
+                    <button className="hide-on-mobile" onClick={() => setIsTrashModalOpen(true)} style={{padding:'6px',borderRadius:'6px',cursor:'pointer',border:'none',backgroundColor:trashTasks.length > 0 ? `${colors.warning}22` : colors.bgTertiary,color:trashTasks.length > 0 ? colors.warning : colors.textMuted, position:'relative'}} title="Papelera">
                       <Trash2 size={16}/>
                       {trashTasks.length > 0 && (
                         <span style={{position:'absolute',top:'-4px',right:'-4px',backgroundColor:colors.warning,color:colors.bgPrimary,fontSize:'9px',fontWeight:'bold',borderRadius:'50%',minWidth:'16px',height:'16px',display:'flex',alignItems:'center',justifyContent:'center',padding:'0 3px'}}>{trashTasks.length}</span>
                       )}
                     </button>
 
-                    <button onClick={() => setShowWeekends(!showWeekends)} style={{padding:'6px',borderRadius:'6px',cursor:'pointer',border:`1px solid ${showWeekends?colors.success:colors.border}`,backgroundColor:colors.bgTertiary,color:showWeekends?colors.success:colors.textMuted}} title="Fines de Semana"><EyeOff size={16}/></button>
+                    <button className="hide-on-mobile" onClick={() => setShowWeekends(!showWeekends)} style={{padding:'6px',borderRadius:'6px',cursor:'pointer',border:`1px solid ${showWeekends?colors.success:colors.border}`,backgroundColor:colors.bgTertiary,color:showWeekends?colors.success:colors.textMuted}} title="Fines de Semana"><EyeOff size={16}/></button>
                     <button onClick={() => setIsReportsModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px'}} title="Reportes"><FileText size={18}/></button>
                     <button onClick={() => setIsDarkMode(!isDarkMode)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px'}} title={isDarkMode ? "Modo Claro" : "Modo Oscuro"}>{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
-                    <button onClick={() => { setSelectedDay(new Date()); setEditingTask(null); setIsTaskModalOpen(true); }} style={{padding:'6px 12px',backgroundColor:colors.success,color:colors.bgPrimary,borderRadius:'6px',border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px',fontWeight:'bold',fontSize:'13px', whiteSpace: 'nowrap'}}><Plus size={16}/> Nueva</button>
+                    <button onClick={() => { setSelectedDay(new Date()); setEditingTask(null); setIsTaskModalOpen(true); }} style={{padding:'8px 14px',backgroundColor:colors.success,color:colors.bgPrimary,borderRadius:'6px',border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px',fontWeight:'bold',fontSize:'13px', whiteSpace: 'nowrap'}}><Plus size={16}/>{isMobile ? '' : ' Nueva'}</button>
                  </div>
               </header>
 
               <div style={{display:'flex',flex:1,overflow:'hidden',position:'relative'}}>
                  {isSidebarOpen && (
-                 <aside style={{width:'300px',flexShrink:0,backgroundColor:colors.bgSecondary,borderRight:`1px solid ${colors.border}`,display:'flex',flexDirection:'column',height:'100%',overflowY:'auto'}}>
+                 <>
+                 {/* Overlay backdrop en mobile */}
+                 {isMobile && <div onClick={() => setIsSidebarOpen(false)} style={{position:'fixed',inset:0,backgroundColor:'rgba(0,0,0,0.5)',zIndex:54}}/>}
+                 <aside className={isMobile ? 'mobile-sidebar-overlay' : ''} style={{width: isMobile ? '100%' : '300px',flexShrink:0,backgroundColor:colors.bgSecondary,borderRight: isMobile ? 'none' : `1px solid ${colors.border}`,display:'flex',flexDirection:'column',height:'100%',overflowY:'auto', ...(isMobile ? {position:'fixed',inset:0,zIndex:55} : {})}}>
+                    {/* Botón cerrar sidebar en mobile */}
+                    {isMobile && (
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',borderBottom:`1px solid ${colors.border}`,backgroundColor:colors.bgPrimary}}>
+                        <h3 style={{margin:0,fontSize:'16px',fontWeight:'bold',color:colors.accent}}>Panel Lateral</h3>
+                        <button onClick={() => setIsSidebarOpen(false)} style={{padding:'8px',borderRadius:'50%',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted}}><X size={22}/></button>
+                      </div>
+                    )}
                     <div style={{flex:1,padding:'16px',overflowY:'auto'}}>
                        {/* ========== FECHA SELECCIONADA ========== */}
                        <div style={{marginBottom:'20px'}}>
@@ -5479,38 +5575,38 @@ CLOSE_SCRIPT_TAG
                        
                        {/* ========== SESIÓN DE USUARIO ========== */}
                        {user && (
-                         <div style={{padding:'8px',backgroundColor:colors.bgPrimary,borderRadius:'6px',border:`1px solid ${colors.border}`,marginBottom:'16px', fontSize:'10px', color:colors.textMuted}}>
-                            <div style={{display:'flex',alignItems:'center',gap:'4px'}}><div style={{width:'6px',height:'6px',borderRadius:'50%',backgroundColor:colors.success}}></div> Sesión Activa</div>
-                            <div style={{marginTop:'4px', fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>ID: {user.uid}</div>
+                         <div style={{padding:'10px',backgroundColor:colors.bgPrimary,borderRadius:'8px',border:`1px solid ${colors.border}`,marginBottom:'16px', fontSize:'11px', color:colors.textMuted}}>
+                            <div style={{display:'flex',alignItems:'center',gap:'6px'}}><div style={{width:'8px',height:'8px',borderRadius:'50%',backgroundColor:colors.success}}></div> <span style={{fontWeight:'600'}}>Sesión Activa</span></div>
+                            <div style={{marginTop:'4px', fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',fontSize:'10px'}}>ID: {user.uid}</div>
                          </div>
                        )}
 
                        {/* ========== ESTADO DE GUARDADO FIREBASE ========== */}
-                       <div style={{padding:'8px',backgroundColor:colors.bgPrimary,borderRadius:'6px',border:`1px solid ${colors.border}`,marginBottom:'16px'}}>
-                          <div style={{display:'flex',alignItems:'center',gap:'8px',padding:'4px',borderRadius:'6px',
-                            backgroundColor: syncStatus === 'saving' ? 'rgba(237,137,54,0.08)' : syncStatus === 'error' ? 'rgba(245,101,101,0.08)' : syncStatus === 'saved' ? 'rgba(72,187,120,0.08)' : 'transparent'}}>
+                       <div style={{padding:'10px',backgroundColor:colors.bgPrimary,borderRadius:'8px',border:`1px solid ${colors.border}`,marginBottom:'16px'}}>
+                          <div style={{display:'flex',alignItems:'center',gap:'10px',padding:'6px 8px',borderRadius:'6px',
+                            backgroundColor: syncStatus === 'saving' ? 'rgba(237,137,54,0.1)' : syncStatus === 'error' ? 'rgba(245,101,101,0.1)' : syncStatus === 'saved' ? 'rgba(72,187,120,0.1)' : 'transparent'}}>
                             <div style={{position:'relative',flexShrink:0}}>
-                              <Database size={16} color={syncStatus === 'saving' ? colors.warning : syncStatus === 'error' ? colors.danger : syncStatus === 'saved' ? colors.success : colors.textMuted} />
-                              {syncStatus === 'saving' && <div style={{position:'absolute',top:'-2px',right:'-2px',width:'6px',height:'6px',borderRadius:'50%',backgroundColor:colors.warning,animation:'pulseDot 1s infinite'}}></div>}
+                              <Database size={18} color={syncStatus === 'saving' ? colors.warning : syncStatus === 'error' ? colors.danger : syncStatus === 'saved' ? colors.success : colors.textMuted} />
+                              {syncStatus === 'saving' && <div style={{position:'absolute',top:'-2px',right:'-2px',width:'8px',height:'8px',borderRadius:'50%',backgroundColor:colors.warning,animation:'pulseDot 1s infinite'}}></div>}
                             </div>
                             <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontSize:'11px',fontWeight:'600',color: syncStatus === 'saving' ? colors.warning : syncStatus === 'error' ? colors.danger : syncStatus === 'saved' ? colors.success : colors.textSecondary}}>
+                              <div style={{fontSize:'12px',fontWeight:'600',color: syncStatus === 'saving' ? colors.warning : syncStatus === 'error' ? colors.danger : syncStatus === 'saved' ? colors.success : colors.textSecondary}}>
                                 {syncStatus === 'saving' ? 'Guardando en Firebase...' : syncStatus === 'error' ? 'Error al guardar' : syncStatus === 'saved' ? 'Guardado en Firebase' : 'Firebase sincronizado'}
                               </div>
-                              {lastSyncTime && <div style={{fontSize:'9px',color:colors.textMuted,marginTop:'1px',fontFamily:'monospace'}}>{formatTimeAgo(lastSyncTime)}</div>}
+                              {lastSyncTime && <div style={{fontSize:'10px',color:colors.textMuted,marginTop:'2px',fontFamily:'monospace'}}>{formatTimeAgo(lastSyncTime)}</div>}
                             </div>
                             <div style={{flexShrink:0}}>
-                              {syncStatus === 'saving' && <RefreshCw size={12} color={colors.warning} style={{animation:'spin 1s linear infinite'}}/>}
-                              {syncStatus === 'saved' && <CheckCircle size={12} color={colors.success}/>}
-                              {syncStatus === 'error' && <AlertCircle size={12} color={colors.danger}/>}
-                              {syncStatus === 'idle' && <CheckCircle size={12} color={colors.textMuted}/>}
+                              {syncStatus === 'saving' && <RefreshCw size={14} color={colors.warning} style={{animation:'spin 1s linear infinite'}}/>}
+                              {syncStatus === 'saved' && <CheckCircle size={14} color={colors.success}/>}
+                              {syncStatus === 'error' && <AlertCircle size={14} color={colors.danger}/>}
+                              {syncStatus === 'idle' && <CheckCircle size={14} color={colors.textMuted}/>}
                             </div>
                           </div>
                           {/* Leyenda de checks por tarea */}
-                          <div style={{marginTop:'6px',padding:'6px 8px',backgroundColor:colors.bgTertiary,borderRadius:'4px',fontSize:'9px',color:colors.textMuted,lineHeight:'1.6'}}>
-                            <div style={{display:'flex',alignItems:'center',gap:'4px'}}><CheckCircle size={9} color={colors.success}/> Sincronizado en Firebase</div>
-                            <div style={{display:'flex',alignItems:'center',gap:'4px'}}><CheckCheck size={9} color="#3B82F6"/> Sincronizado + Respaldado</div>
-                            <div style={{display:'flex',alignItems:'center',gap:'4px',opacity:0.7}}><span style={{fontSize:'8px'}}>Clic en el icono = forzar sync</span></div>
+                          <div style={{marginTop:'8px',padding:'8px 10px',backgroundColor:colors.bgTertiary,borderRadius:'6px',fontSize:'11px',color:colors.textSecondary,lineHeight:'1.8'}}>
+                            <div style={{display:'flex',alignItems:'center',gap:'6px'}}><CheckCircle size={13} color={colors.success} strokeWidth={2.5}/> Sincronizado en Firebase</div>
+                            <div style={{display:'flex',alignItems:'center',gap:'6px'}}><CheckCheck size={13} color="#60A5FA" strokeWidth={2.5}/> Sincronizado + Respaldado</div>
+                            <div style={{display:'flex',alignItems:'center',gap:'6px',marginTop:'4px',opacity:0.8}}><RefreshCw size={11} color={colors.textMuted}/><span style={{fontSize:'10px'}}>Clic en el icono = forzar sync</span></div>
                           </div>
                        </div>
 
@@ -5534,40 +5630,40 @@ CLOSE_SCRIPT_TAG
                           {activeTask ? (
                             <>
                               <h4 style={{fontSize:'11px',fontWeight:'bold',color:colors.success,textTransform:'uppercase',marginBottom:'8px',display:'flex',alignItems:'center',gap:'8px',paddingBottom:'4px',borderBottom:`1px solid ${colors.success}`}}><PlayCircle size={14}/> Actividad en curso</h4>
-                              <div style={{backgroundColor:colors.bgPrimary,border:`1px solid ${colors.accent}`,borderRadius:'8px',padding:'12px'}}>
-                                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'4px'}}>
-                                  <span style={{fontSize:'10px',fontWeight:'bold',backgroundColor:colors.success,color:colors.bgPrimary,padding:'2px 8px',borderRadius:'10px',textTransform:'uppercase',display:'flex',alignItems:'center',gap:'4px'}}><PlayCircle size={10}/> En Curso</span>
+                              <div style={{backgroundColor:colors.bgPrimary,border:`1px solid ${colors.accent}`,borderRadius:'10px',padding:'14px'}}>
+                                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'6px'}}>
+                                  <span style={{fontSize:'11px',fontWeight:'bold',backgroundColor:colors.success,color:colors.bgPrimary,padding:'3px 10px',borderRadius:'10px',textTransform:'uppercase',display:'flex',alignItems:'center',gap:'4px'}}><PlayCircle size={12}/> En Curso</span>
                                   <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
                                     <SyncIndicator taskId={activeTask.id} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={forceSyncTask} colors={colors} size={12}/>
-                                    <span style={{fontSize:'11px',fontFamily:'monospace',color:colors.accent}}>{new Date(activeTask.start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
+                                    <span style={{fontSize:'12px',fontFamily:'monospace',color:colors.accent,fontWeight:'600'}}>{new Date(activeTask.start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
                                   </div>
                                 </div>
-                                <div style={{fontWeight:'bold',color:colors.textSecondary,fontSize:'14px'}}>{activeTask.subtipo || activityTypes.find(at=>at.id===activeTask.typeId)?.name || 'Actividad'}</div>
-                                <div style={{marginTop:'12px',display:'flex',flexDirection:'column',gap:'4px',fontSize:'11px',color:colors.textMuted}}>
-                                  <div style={{display:'flex',justifyContent:'space-between'}} title="Tiempo Sesión Actual">
-                                    <span>⏱️ Sesión Actual:</span>
-                                    <span style={{color:colors.success,fontWeight:'bold'}}>{formatDuration(getCurrentSessionDuration(activeTask, currentTime))}</span>
+                                <div style={{fontWeight:'bold',color:colors.textPrimary,fontSize:'15px',marginTop:'4px'}}>{activeTask.subtipo || activityTypes.find(at=>at.id===activeTask.typeId)?.name || 'Actividad'}</div>
+                                <div style={{marginTop:'12px',display:'flex',flexDirection:'column',gap:'6px',fontSize:'12px',color:colors.textMuted}}>
+                                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}} title="Tiempo Sesión Actual">
+                                    <span>Sesion Actual:</span>
+                                    <span style={{color:colors.success,fontWeight:'bold',fontSize:'13px'}}>{formatDuration(getCurrentSessionDuration(activeTask, currentTime))}</span>
                                   </div>
-                                  <div style={{display:'flex',justifyContent:'space-between'}} title="Tiempo Acumulado Total">
-                                    <span>⌛ Total Acumulado:</span>
-                                    <span style={{color:colors.accent,fontWeight:'bold'}}>{formatDuration(getSeriesDuration(activeTask.id, activeTask.seriesId, currentTime))}</span>
+                                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}} title="Tiempo Acumulado Total">
+                                    <span>Total Acumulado:</span>
+                                    <span style={{color:colors.accent,fontWeight:'bold',fontSize:'13px'}}>{formatDuration(getSeriesDuration(activeTask.id, activeTask.seriesId, currentTime))}</span>
                                   </div>
-                                  <div style={{display:'flex',justifyContent:'space-between'}} title="Total Sesiones">
-                                    <span>🔄 Sesiones:</span>
-                                    <span>{getSeriesSessionCount(activeTask.id, activeTask.seriesId)}</span>
+                                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}} title="Total Sesiones">
+                                    <span>Sesiones:</span>
+                                    <span style={{fontWeight:'600'}}>{getSeriesSessionCount(activeTask.id, activeTask.seriesId)}</span>
                                   </div>
                                 </div>
-                                <button onClick={()=>{setEditingTask(activeTask);setIsTaskModalOpen(true);}} style={{marginTop:'8px',width:'100%',fontSize:'12px',padding:'6px',borderRadius:'4px',backgroundColor:colors.bgTertiary,color:colors.textMuted,border:`1px solid ${colors.border}`,cursor:'pointer'}}>Gestionar</button>
+                                <button onClick={()=>{setEditingTask(activeTask);setIsTaskModalOpen(true);}} style={{marginTop:'10px',width:'100%',fontSize:'13px',padding:'8px',borderRadius:'6px',backgroundColor:colors.bgTertiary,color:colors.textSecondary,border:`1px solid ${colors.border}`,cursor:'pointer',fontWeight:'600',minHeight:'36px'}}>Gestionar</button>
                               </div>
                             </>
                           ) : (
-                            <div style={{padding:'16px',backgroundColor:'rgba(237,137,54,0.1)',borderRadius:'8px',border:`2px solid ${colors.warning}`,textAlign:'center'}}>
-                              <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',marginBottom:'8px'}}>
-                                <AlertTriangle size={20} color={colors.warning}/>
-                                <span style={{fontSize:'13px',fontWeight:'bold',color:colors.warning,textTransform:'uppercase'}}>Sin actividad en curso</span>
+                            <div style={{padding:'16px',backgroundColor:'rgba(237,137,54,0.1)',borderRadius:'10px',border:`2px solid ${colors.warning}`,textAlign:'center'}}>
+                              <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',marginBottom:'10px'}}>
+                                <AlertTriangle size={22} color={colors.warning}/>
+                                <span style={{fontSize:'14px',fontWeight:'bold',color:colors.warning,textTransform:'uppercase'}}>Sin actividad en curso</span>
                               </div>
-                              <p style={{fontSize:'12px',color:colors.textSecondary,margin:'0 0 8px 0'}}>No estás registrando tiempo en ninguna actividad.</p>
-                              <p style={{fontSize:'11px',color:colors.textMuted,margin:0}}>Inicia una actividad desde la agenda o el calendario.</p>
+                              <p style={{fontSize:'13px',color:colors.textSecondary,margin:'0 0 8px 0',lineHeight:'1.5'}}>No estás registrando tiempo en ninguna actividad.</p>
+                              <p style={{fontSize:'12px',color:colors.textMuted,margin:0,lineHeight:'1.4'}}>Inicia una actividad desde la agenda o el calendario.</p>
                             </div>
                           )}
                        </div>
@@ -5583,19 +5679,19 @@ CLOSE_SCRIPT_TAG
                                 const typeInfo = activityTypes.find(at=>at.id===task.typeId);
                                 const taskColor = typeInfo?.color || colors.accent;
                                 return (
-                                  <div key={task.id} onClick={()=>{setEditingTask(task);setIsTaskModalOpen(true);}} style={{padding:'12px',borderRadius:'8px',border:`1px solid ${colors.border}`,cursor:'pointer',backgroundColor:colors.bgSecondary,opacity:task.status==='completed'?0.6:1,borderLeft:`4px solid ${taskColor}`,transition:'transform 0.15s ease',boxShadow:'0 2px 4px rgba(0,0,0,0.2)'}}>
+                                  <div key={task.id} onClick={()=>{setEditingTask(task);setIsTaskModalOpen(true);}} style={{padding:'12px 14px',borderRadius:'10px',border:`1px solid ${colors.border}`,cursor:'pointer',backgroundColor:colors.bgSecondary,opacity:task.status==='completed'?0.6:1,borderLeft:`4px solid ${taskColor}`,transition:'transform 0.15s ease, box-shadow 0.15s ease',boxShadow:'0 2px 4px rgba(0,0,0,0.2)',minHeight:'52px'}}>
                                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                                      <span style={{fontWeight:'bold',fontSize:'13px',color:task.status==='completed'?colors.textMuted:colors.textPrimary,textDecoration:task.status==='completed'?'line-through':'none'}}>{task.subtipo||typeInfo?.name||'Actividad'}</span>
+                                      <span style={{fontWeight:'bold',fontSize:'14px',color:task.status==='completed'?colors.textMuted:colors.textPrimary,textDecoration:task.status==='completed'?'line-through':'none'}}>{task.subtipo||typeInfo?.name||'Actividad'}</span>
                                       <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
-                                        {task.status==='in_progress' && <span style={{fontSize:'9px',fontWeight:'bold',backgroundColor:colors.success,color:colors.bgPrimary,padding:'2px 6px',borderRadius:'8px'}}>EN CURSO</span>}
-                                        {task.status==='paused' && <span style={{fontSize:'9px',fontWeight:'bold',backgroundColor:colors.warning,color:colors.bgPrimary,padding:'2px 6px',borderRadius:'8px'}}>PAUSA</span>}
-                                        {task.status==='completed' && <CheckCircle size={16} color={colors.success}/>}
+                                        {task.status==='in_progress' && <span style={{fontSize:'10px',fontWeight:'bold',backgroundColor:colors.success,color:colors.bgPrimary,padding:'3px 8px',borderRadius:'8px'}}>EN CURSO</span>}
+                                        {task.status==='paused' && <span style={{fontSize:'10px',fontWeight:'bold',backgroundColor:colors.warning,color:colors.bgPrimary,padding:'3px 8px',borderRadius:'8px'}}>PAUSA</span>}
+                                        {task.status==='completed' && <CheckCircle size={18} color={colors.success}/>}
                                         <SyncIndicator taskId={task.id} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={forceSyncTask} colors={colors} size={12}/>
                                       </div>
                                     </div>
-                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'6px'}}>
-                                      <span style={{fontSize:'11px',color:colors.textMuted,display:'flex',alignItems:'center',gap:'4px'}}><Clock size={12}/> {new Date(task.start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
-                                      <span style={{fontSize:'10px',color:taskColor,fontWeight:'600'}}>{typeInfo?.name}</span>
+                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'8px'}}>
+                                      <span style={{fontSize:'12px',color:colors.textMuted,display:'flex',alignItems:'center',gap:'4px'}}><Clock size={13}/> {new Date(task.start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
+                                      <span style={{fontSize:'11px',color:taskColor,fontWeight:'600'}}>{typeInfo?.name}</span>
                                     </div>
                                   </div>
                                 );
@@ -5612,11 +5708,11 @@ CLOSE_SCRIPT_TAG
                           ) : (
                             <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
                               {pendingTasks.slice(0,5).map(task => (
-                                <div key={task.id} onClick={()=>{setEditingTask(task);setIsTaskModalOpen(true);}} style={{padding:'8px',backgroundColor:colors.bgPrimary,borderRadius:'4px',borderLeft:`3px solid ${colors.warning}`,fontSize:'12px',color:colors.textSecondary,cursor:'pointer'}}>
+                                <div key={task.id} onClick={()=>{setEditingTask(task);setIsTaskModalOpen(true);}} style={{padding:'10px 12px',backgroundColor:colors.bgPrimary,borderRadius:'6px',borderLeft:`3px solid ${colors.warning}`,fontSize:'12px',color:colors.textSecondary,cursor:'pointer',minHeight:'44px',display:'flex',flexDirection:'column',justifyContent:'center'}}>
                                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'4px'}}>
-                                    <span style={{fontWeight:'600',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0}}>{task.subtipo||activityTypes.find(at=>at.id===task.typeId)?.name||'Actividad'}</span>
-                                    <div style={{display:'flex',alignItems:'center',gap:'4px',flexShrink:0}}>
-                                      {task.status==='paused' && <span style={{backgroundColor:'rgba(237,137,54,0.2)',color:colors.warning,padding:'1px 6px',borderRadius:'4px',fontSize:'9px'}}>PAUSA</span>}
+                                    <span style={{fontWeight:'600',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0,fontSize:'13px'}}>{task.subtipo||activityTypes.find(at=>at.id===task.typeId)?.name||'Actividad'}</span>
+                                    <div style={{display:'flex',alignItems:'center',gap:'6px',flexShrink:0}}>
+                                      {task.status==='paused' && <span style={{backgroundColor:'rgba(237,137,54,0.2)',color:colors.warning,padding:'2px 8px',borderRadius:'6px',fontSize:'10px',fontWeight:'600'}}>PAUSA</span>}
                                       <SyncIndicator taskId={task.id} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={forceSyncTask} colors={colors} size={10}/>
                                     </div>
                                   </div>
@@ -5649,13 +5745,14 @@ CLOSE_SCRIPT_TAG
                        <SideBanner selectedDate={selectedDay} markers={markers} colors={colors} />
                     </div>
                  </aside>
+                 </>
                  )}
 
                  <main style={{flex:1,display:'flex',flexDirection:'column',height:'100%',overflow:'hidden',backgroundColor:colors.bgPrimary}}>
                     <div style={{flex:1,overflowY:'auto',padding:'16px'}}>
                        {/* ... existing main calendar ... */}
-                       <div style={{display:'grid',gridTemplateColumns:`repeat(${showWeekends ? 7 : 5}, 1fr)`,gap:'1px',backgroundColor:colors.border,border:`1px solid ${colors.border}`,borderRadius:'8px',overflow:'hidden'}}>
-                            {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', ...(showWeekends ? ['Sáb', 'Dom'] : [])].map(d => (
+                       <div className="calendar-grid-responsive" style={{display:'grid',gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : `repeat(${showWeekends ? 7 : 5}, 1fr)`,gap:'1px',backgroundColor:colors.border,border:`1px solid ${colors.border}`,borderRadius:'8px',overflow:'hidden'}}>
+                            {!isMobile && ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', ...(showWeekends ? ['Sáb', 'Dom'] : [])].map(d => (
                                <div key={d} style={{backgroundColor:colors.bgSecondary,padding:'10px',textAlign:'center',fontSize:'13px',fontWeight:'bold',color:colors.textMuted,borderBottom:`1px solid ${colors.border}`}}>{d}</div>
                             ))}
                             {visibleDays.map(day => (
@@ -5675,6 +5772,7 @@ CLOSE_SCRIPT_TAG
                                  taskSyncMap={taskSyncMap}
                                  lastBackupAt={lastBackupAt}
                                  onForceSync={forceSyncTask}
+                                 isMobile={isMobile}
                                />
                             ))}
                          </div>
