@@ -20,7 +20,8 @@
         "lucide-react": "https://esm.sh/lucide-react@0.300.0",
         "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
         "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js",
-        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js",
+        "firebase/storage": "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js"
       }
     }
     </script>
@@ -67,6 +68,7 @@
         import { initializeApp } from 'firebase/app';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
         import { getFirestore, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, enableIndexedDbPersistence, query, writeBatch, where, getDocs } from 'firebase/firestore';
+        import { getStorage, ref, uploadString, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
 
         // --- DATA SEMILLA (CONSTANTES) ---
         const PAYMENTS_2026 = [
@@ -1798,7 +1800,7 @@
            );
         };
 
-        const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, onImportBackup, activityTypes, viaticumRates }) => {
+        const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, onImportBackup, activityTypes, viaticumRates, trashTasks, onExportBackup, onImportBackupJSON, onUploadBackupToStorage, onListStorageBackups, onRestoreFromStorage }) => {
           const [activeTab, setActiveTab] = useState('prog_real');
           const [executedStart, setExecutedStart] = useState('');
           const [executedEnd, setExecutedEnd] = useState('');
@@ -1807,6 +1809,9 @@
           const [teleworkStart, setTeleworkStart] = useState('');
           const [teleworkEnd, setTeleworkEnd] = useState('');
           const fileInputRef = useRef(null);
+          const jsonFileInputRef = useRef(null);
+          const [storageBackups, setStorageBackups] = useState([]);
+          const [loadingBackups, setLoadingBackups] = useState(false);
 
           useEffect(() => {
             if (isOpen) {
@@ -2946,11 +2951,10 @@ function initFirebase(){
     updateLiveStatus("connecting","Conectando...");
 
     auth.signInAnonymously().then(function(){
-      var fbAppId=DATA.firebase.appId;
       var fbUid=DATA.firebase.userUid;
 
       // Listen to tasks collection
-      db.collection("artifacts").doc(fbAppId).collection("users").doc(fbUid).collection("tasks")
+      db.collection("users").doc(fbUid).collection("tasks")
         .onSnapshot(function(snapshot){
           var liveTasks=[];
           snapshot.forEach(function(doc){
@@ -2969,7 +2973,7 @@ function initFirebase(){
         });
 
       // Listen to settings (dayOverrides, activityTypes, viaticumRates)
-      db.collection("artifacts").doc(fbAppId).collection("users").doc(fbUid).collection("data").doc("calendar_settings")
+      db.collection("users").doc(fbUid).collection("data").doc("calendar_settings")
         .onSnapshot(function(docSnap){
           if(docSnap.exists()){
             var s=docSnap.data();
@@ -4253,24 +4257,83 @@ CLOSE_SCRIPT_TAG
               )}
 
               {activeTab === 'total' && (
-                <div style={{textAlign:'center',padding:'40px'}}>
-                   {/* Backup UI ... */}
+                <div style={{textAlign:'center',padding:'20px'}}>
                    <Database size={48} style={{color:colors.accent,marginBottom:'16px'}}/>
                    <h3 style={{color:colors.accent,marginBottom:'8px'}}>Respaldo y Migración</h3>
-                   <p style={{color:colors.textMuted,marginBottom:'20px'}}>Exporte su base de datos completa para respaldar o migrar.</p>
-                   <div style={{display: 'flex', justifyContent: 'center', gap: '16px'}}>
-                      <button onClick={() => exportToCSV('total')} style={{backgroundColor:colors.success,color:colors.bgPrimary,padding:'12px 24px',borderRadius:'8px',fontWeight:'bold',border:'none',cursor:'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}>
-                          <Download size={18}/> Exportar Respaldo Completo (CSV)
+                   <p style={{color:colors.textMuted,marginBottom:'20px'}}>
+                     Exporta toda tu base de datos para guardar una copia de seguridad o importar una copia previamente guardada.
+                   </p>
+                   <div style={{display:'flex',justifyContent:'center',gap:'16px',flexWrap:'wrap'}}>
+                      <button
+                        onClick={onExportBackup}
+                        style={{backgroundColor:colors.success,color:colors.bgPrimary,padding:'10px 20px',borderRadius:'8px',border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:'8px',fontWeight:'bold'}}
+                      >
+                        <Download size={18}/> Exportar respaldo (JSON)
                       </button>
-                      
-                      <div style={{position: 'relative'}}>
-                          <input type="file" accept=".csv" ref={fileInputRef} style={{display: 'none'}} onChange={handleFileImport}/>
-                          <button onClick={() => fileInputRef.current.click()} style={{backgroundColor:colors.bgTertiary,color:colors.accent,padding:'12px 24px',borderRadius:'8px',fontWeight:'bold',border:`1px solid ${colors.border}`,cursor:'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}>
-                              <Upload size={18}/> Importar Respaldo (CSV)
+                      <div>
+                        <input type="file" accept=".json" ref={jsonFileInputRef} style={{display:'none'}} onChange={onImportBackupJSON}/>
+                        <button
+                          onClick={() => jsonFileInputRef.current.click()}
+                          style={{backgroundColor:colors.bgTertiary,color:colors.accent,padding:'10px 20px',borderRadius:'8px',border:`1px solid ${colors.border}`,cursor:'pointer',display:'flex',alignItems:'center',gap:'8px',fontWeight:'bold'}}
+                        >
+                          <Upload size={18}/> Importar respaldo (JSON)
+                        </button>
+                      </div>
+                   </div>
+
+                   {/* Respaldo CSV legado */}
+                   <div style={{marginTop:'16px',display:'flex',justifyContent:'center',gap:'16px',flexWrap:'wrap'}}>
+                      <button onClick={() => exportToCSV('total')} style={{backgroundColor:colors.bgTertiary,color:colors.textSecondary,padding:'8px 16px',borderRadius:'8px',fontWeight:'bold',border:`1px solid ${colors.border}`,cursor:'pointer', display:'flex', alignItems:'center', gap:'8px',fontSize:'12px'}}>
+                          <Download size={14}/> Exportar CSV (legado)
+                      </button>
+                      <div>
+                          <input type="file" accept=".csv" ref={fileInputRef} style={{display:'none'}} onChange={handleFileImport}/>
+                          <button onClick={() => fileInputRef.current.click()} style={{backgroundColor:colors.bgTertiary,color:colors.textSecondary,padding:'8px 16px',borderRadius:'8px',fontWeight:'bold',border:`1px solid ${colors.border}`,cursor:'pointer', display:'flex', alignItems:'center', gap:'8px',fontSize:'12px'}}>
+                              <Upload size={14}/> Importar CSV (legado)
                           </button>
                       </div>
-                  </div>
-                  <p style={{marginTop: '16px', fontSize: '12px', color: colors.textMuted}}>Nota: Utilice el archivo generado por la opción "Exportar Respaldo Completo".</p>
+                   </div>
+
+                   <p style={{marginTop:'16px',fontSize:'12px',color:colors.textMuted}}>
+                     También se realizan respaldos automáticos diarios en Firebase Storage.
+                   </p>
+
+                   {/* Firebase Storage Backups */}
+                   <div style={{marginTop:'20px',paddingTop:'20px',borderTop:`1px solid ${colors.border}`}}>
+                     <Save size={36} style={{color:colors.accent,marginBottom:'12px'}}/>
+                     <h3 style={{color:colors.accent,marginBottom:'8px'}}>Respaldos en Firebase Storage</h3>
+                     <p style={{color:colors.textMuted,marginBottom:'16px',fontSize:'13px'}}>Se guardan automáticamente cada 24 horas. También puede forzar uno manualmente.</p>
+                     <div style={{display:'flex',justifyContent:'center',gap:'12px',flexWrap:'wrap',marginBottom:'16px'}}>
+                       <button
+                         onClick={async () => { await onUploadBackupToStorage(); alert('Respaldo subido a Firebase Storage'); }}
+                         style={{backgroundColor:colors.accent,color:colors.bgPrimary,padding:'10px 20px',borderRadius:'8px',border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:'8px',fontWeight:'bold'}}
+                       >
+                         <Upload size={18}/> Subir respaldo ahora
+                       </button>
+                       <button
+                         onClick={async () => { setLoadingBackups(true); const list = await onListStorageBackups(); setStorageBackups(list); setLoadingBackups(false); }}
+                         style={{backgroundColor:colors.bgTertiary,color:colors.accent,padding:'10px 20px',borderRadius:'8px',border:`1px solid ${colors.border}`,cursor:'pointer',display:'flex',alignItems:'center',gap:'8px',fontWeight:'bold'}}
+                       >
+                         <Database size={18}/> {loadingBackups ? 'Cargando...' : 'Ver respaldos guardados'}
+                       </button>
+                     </div>
+                     {storageBackups.length > 0 && (
+                       <div style={{backgroundColor:colors.bgPrimary,padding:'16px',borderRadius:'8px',border:`1px solid ${colors.border}`,textAlign:'left',maxHeight:'200px',overflowY:'auto'}}>
+                         <h4 style={{color:colors.accent,fontSize:'12px',marginBottom:'8px',textTransform:'uppercase'}}>Respaldos disponibles ({storageBackups.length})</h4>
+                         {storageBackups.map((name, idx) => (
+                           <div key={idx} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 8px',borderBottom:`1px solid ${colors.border}`,fontSize:'12px'}}>
+                             <span style={{color:colors.textPrimary}}>{name}</span>
+                             <button
+                               onClick={() => { if(confirm('¿Restaurar este respaldo? Los datos actuales se sobrescribirán.')) onRestoreFromStorage(name); }}
+                               style={{backgroundColor:colors.warning+'22',color:colors.warning,padding:'4px 10px',borderRadius:'4px',border:'none',cursor:'pointer',fontSize:'11px',fontWeight:'bold'}}
+                             >
+                               Restaurar
+                             </button>
+                           </div>
+                         ))}
+                       </div>
+                     )}
+                   </div>
 
                   <div style={{marginTop:'30px',paddingTop:'20px',borderTop:`1px solid ${colors.border}`}}>
                     <ExternalLink size={36} style={{color:colors.accent,marginBottom:'12px'}}/>
@@ -4580,7 +4643,7 @@ CLOSE_SCRIPT_TAG
             const app = initializeApp(firebaseConfig);
             const auth = getAuth(app);
             const db = getFirestore(app);
-            // try { enableIndexedDbPersistence(db).catch(err => console.warn(err)); } catch (e) {}
+            try { enableIndexedDbPersistence(db).catch(err => console.warn('Persistence:', err.code)); } catch (e) { console.warn('Persistence already enabled'); }
             signInAnonymously(auth).catch(console.error);
             onAuthStateChanged(auth, setUser);
             window.addEventListener('online', () => setIsOffline(false));
@@ -4590,13 +4653,12 @@ CLOSE_SCRIPT_TAG
           useEffect(() => {
             if (!user) return;
             const db = getFirestore();
-            const appId = "calendariosinacv1"; 
-            
-            const tasksQuery = query(collection(db, 'artifacts', appId, 'users', user.uid, 'tasks'));
+
+            const tasksQuery = query(collection(db, 'users', user.uid, 'tasks'));
             onSnapshot(tasksQuery, (snapshot) => { setTasks(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }))); });
 
             // --- PAPELERA: Listener de tareas eliminadas ---
-            const trashQuery = query(collection(db, 'artifacts', appId, 'users', user.uid, 'trash'));
+            const trashQuery = query(collection(db, 'users', user.uid, 'trash'));
             onSnapshot(trashQuery, (snapshot) => { 
               const trashItems = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
               // Auto-limpiar tareas con más de 30 días en papelera
@@ -4604,13 +4666,13 @@ CLOSE_SCRIPT_TAG
               const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
               trashItems.forEach(item => {
                 if (item.deletedAt && (now - new Date(item.deletedAt).getTime()) > THIRTY_DAYS) {
-                  deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'trash', item.id)).catch(console.error);
+                  deleteDoc(doc(db, 'users', user.uid, 'trash', item.id)).catch(console.error);
                 }
               });
               setTrashTasks(trashItems.filter(item => !item.deletedAt || (now - new Date(item.deletedAt).getTime()) <= THIRTY_DAYS));
             });
 
-            const settingsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'calendar_settings');
+            const settingsRef = doc(db, 'users', user.uid, 'data', 'calendar_settings');
             onSnapshot(settingsRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
@@ -4643,8 +4705,8 @@ CLOSE_SCRIPT_TAG
           useEffect(() => {
               if(!user) return;
               const db = getFirestore();
-              const appId = "calendariosinacv1";
-              const settingsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'calendar_settings');
+
+              const settingsRef = doc(db, 'users', user.uid, 'data', 'calendar_settings');
               // Debounce simple o guardar directo
               setDoc(settingsRef, { activityTypes, ppCodes, viaticumRates, monthlyBudgets, isBudgetLocked, lodgingRates, isViaticosLocked, isTypesLocked, isPPLocked }, { merge: true });
           }, [activityTypes, ppCodes, viaticumRates, monthlyBudgets, isBudgetLocked, lodgingRates, isViaticosLocked, isTypesLocked, isPPLocked, user]);
@@ -4652,69 +4714,69 @@ CLOSE_SCRIPT_TAG
           const saveTaskToDB = async (taskData) => {
               if (!user) return;
               const db = getFirestore();
-              const appId = "calendariosinacv1";
+
               const { id, ...data } = taskData;
               if (data.start instanceof Date) data.start = data.start.toISOString();
               if (data.end instanceof Date) data.end = data.end.toISOString();
               try {
-                  if (id && tasks.find(t => t.id === id)) { await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', id), data); } 
-                  else { await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', id || uuid()), data); }
+                  if (id && tasks.find(t => t.id === id)) { await updateDoc(doc(db, 'users', user.uid, 'tasks', id), data); } 
+                  else { await setDoc(doc(db, 'users', user.uid, 'tasks', id || uuid()), data); }
               } catch (e) { console.error("Error saving task", e); }
           };
 
           const deleteTaskFromDB = async (id) => {
               if (!user) return;
               const db = getFirestore();
-              const appId = "calendariosinacv1";
-              await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', id));
+
+              await deleteDoc(doc(db, 'users', user.uid, 'tasks', id));
           };
 
           // --- PAPELERA: Funciones CRUD ---
           const moveTaskToTrash = async (taskId) => {
               if (!user) return;
               const db = getFirestore();
-              const appId = "calendariosinacv1";
+
               const taskToTrash = tasks.find(t => t.id === taskId);
               if (!taskToTrash) return;
               const { id, ...taskData } = taskToTrash;
               // Guardar en colección trash con timestamp
-              await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'trash', id), {
+              await setDoc(doc(db, 'users', user.uid, 'trash', id), {
                 ...taskData,
                 originalId: id,
                 deletedAt: new Date().toISOString()
               });
               // Eliminar de tareas activas
-              await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', id));
+              await deleteDoc(doc(db, 'users', user.uid, 'tasks', id));
           };
 
           const restoreTaskFromTrash = async (trashItemId) => {
               if (!user) return;
               const db = getFirestore();
-              const appId = "calendariosinacv1";
+
               const trashItem = trashTasks.find(t => t.id === trashItemId);
               if (!trashItem) return;
               const { deletedAt, originalId, id, ...taskData } = trashItem;
               const restoredId = originalId || id;
               // Restaurar a tareas activas
-              await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', restoredId), taskData);
+              await setDoc(doc(db, 'users', user.uid, 'tasks', restoredId), taskData);
               // Eliminar de papelera
-              await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'trash', trashItemId));
+              await deleteDoc(doc(db, 'users', user.uid, 'trash', trashItemId));
           };
 
           const permanentDeleteFromTrash = async (trashItemId) => {
               if (!user) return;
               const db = getFirestore();
-              const appId = "calendariosinacv1";
-              await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'trash', trashItemId));
+
+              await deleteDoc(doc(db, 'users', user.uid, 'trash', trashItemId));
           };
 
           const emptyTrash = async () => {
               if (!user) return;
               const db = getFirestore();
-              const appId = "calendariosinacv1";
+
               const batch = writeBatch(db);
               trashTasks.forEach(item => {
-                batch.delete(doc(db, 'artifacts', appId, 'users', user.uid, 'trash', item.id));
+                batch.delete(doc(db, 'users', user.uid, 'trash', item.id));
               });
               await batch.commit();
           };
@@ -4722,11 +4784,11 @@ CLOSE_SCRIPT_TAG
           const batchUpdateTasks = async (oldTypeId, newTypeId) => {
              if(!user) return;
              const db = getFirestore();
-             const appId = "calendariosinacv1";
+
              const batch = writeBatch(db);
              const toUpdate = tasks.filter(t => t.typeId === oldTypeId);
              toUpdate.forEach(t => {
-                 const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', t.id);
+                 const ref = doc(db, 'users', user.uid, 'tasks', t.id);
                  batch.update(ref, { typeId: newTypeId });
              });
              await batch.commit();
@@ -4735,9 +4797,167 @@ CLOSE_SCRIPT_TAG
           const saveSettingsToDB = async (updates) => {
               if (!user) return;
               const db = getFirestore();
-              const appId = "calendariosinacv1";
-              const settingsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'calendar_settings');
+
+              const settingsRef = doc(db, 'users', user.uid, 'data', 'calendar_settings');
               await setDoc(settingsRef, updates, { merge: true });
+          };
+
+          // --- RESPALDO A FIREBASE STORAGE ---
+          const uploadBackupToStorage = async () => {
+              if (!user) return;
+              const backupData = {
+                tasks: tasks,
+                trash: trashTasks,
+                settings: {
+                  activityTypes, ppCodes, viaticumRates, monthlyBudgets,
+                  lodgingRates, dayOverrides, isBudgetLocked, isViaticosLocked,
+                  isTypesLocked, isPPLocked
+                },
+                exportedAt: new Date().toISOString()
+              };
+              const jsonString = JSON.stringify(backupData, null, 2);
+              const fileName = `backup_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.json`;
+              const storage = getStorage();
+              const storageRef = ref(storage, `users/${user.uid}/${fileName}`);
+              try {
+                await uploadString(storageRef, jsonString);
+                console.log('Respaldo automatico subido a Firebase Storage');
+                // Mantener solo los ultimos 10 respaldos
+                const listRef = ref(storage, `users/${user.uid}/`);
+                const res = await listAll(listRef);
+                const items = res.items.sort((a, b) => a.name.localeCompare(b.name));
+                const maxBackups = 10;
+                if (items.length > maxBackups) {
+                  const toDelete = items.slice(0, items.length - maxBackups);
+                  toDelete.forEach(item => deleteObject(item).catch(console.error));
+                }
+              } catch (error) {
+                console.error('Error al subir respaldo a Storage:', error);
+              }
+          };
+
+          // Respaldo automatico cada 24 horas
+          useEffect(() => {
+              if (!user || tasks.length === 0) return;
+              // Respaldo inmediato al iniciar sesion (con un delay para que se carguen datos)
+              const initialTimeout = setTimeout(() => { uploadBackupToStorage(); }, 10000);
+              // Programar respaldo cada 24 horas
+              const interval = setInterval(uploadBackupToStorage, 24 * 60 * 60 * 1000);
+              return () => { clearTimeout(initialTimeout); clearInterval(interval); };
+          }, [user, tasks.length > 0]);
+
+          // --- EXPORTAR RESPALDO COMPLETO (JSON) ---
+          const exportBackup = () => {
+              const backupData = {
+                tasks: tasks,
+                trash: trashTasks,
+                settings: {
+                  activityTypes, ppCodes, viaticumRates, monthlyBudgets,
+                  lodgingRates, dayOverrides, isBudgetLocked, isViaticosLocked,
+                  isTypesLocked, isPPLocked
+                },
+                exportedAt: new Date().toISOString()
+              };
+              const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `backup_${new Date().toISOString().slice(0,10)}.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+          };
+
+          // --- IMPORTAR RESPALDO (JSON) ---
+          const importBackup = (event) => {
+              const file = event.target.files[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                try {
+                  const data = JSON.parse(e.target.result);
+                  // Restaurar tareas
+                  if (data.tasks && Array.isArray(data.tasks)) {
+                    data.tasks.forEach(task => saveTaskToDB(task));
+                  }
+                  // Restaurar papelera
+                  if (data.trash && Array.isArray(data.trash)) {
+                    data.trash.forEach(item => {
+                      const { id, ...rest } = item;
+                      const db = getFirestore();
+                      setDoc(doc(db, 'users', user.uid, 'trash', id), rest);
+                    });
+                  }
+                  // Restaurar configuracion
+                  if (data.settings) {
+                    if (data.settings.activityTypes) setActivityTypes(data.settings.activityTypes);
+                    if (data.settings.ppCodes) setPpCodes(data.settings.ppCodes);
+                    if (data.settings.viaticumRates) setViaticumRates(data.settings.viaticumRates);
+                    if (data.settings.monthlyBudgets) setMonthlyBudgets(data.settings.monthlyBudgets);
+                    if (data.settings.lodgingRates) setLodgingRates(data.settings.lodgingRates);
+                    if (data.settings.dayOverrides) setDayOverrides(data.settings.dayOverrides);
+                    if (data.settings.isBudgetLocked !== undefined) setIsBudgetLocked(data.settings.isBudgetLocked);
+                    if (data.settings.isViaticosLocked !== undefined) setIsViaticosLocked(data.settings.isViaticosLocked);
+                    if (data.settings.isTypesLocked !== undefined) setIsTypesLocked(data.settings.isTypesLocked);
+                    if (data.settings.isPPLocked !== undefined) setIsPPLocked(data.settings.isPPLocked);
+                    saveSettingsToDB(data.settings);
+                  }
+                  alert('Respaldo restaurado correctamente');
+                } catch (error) {
+                  alert('Error al leer el archivo de respaldo: ' + error.message);
+                }
+              };
+              reader.readAsText(file);
+          };
+
+          // --- RESTAURAR DESDE FIREBASE STORAGE ---
+          const listStorageBackups = async () => {
+              if (!user) return [];
+              const storage = getStorage();
+              const listRef = ref(storage, `users/${user.uid}/`);
+              try {
+                const res = await listAll(listRef);
+                return res.items.map(item => item.name).sort().reverse();
+              } catch (error) {
+                console.error('Error al listar respaldos:', error);
+                return [];
+              }
+          };
+
+          const restoreFromStorageBackup = async (fileName) => {
+              if (!user) return;
+              const storage = getStorage();
+              const fileRef = ref(storage, `users/${user.uid}/${fileName}`);
+              try {
+                const url = await getDownloadURL(fileRef);
+                const response = await fetch(url);
+                const data = await response.json();
+                if (data.tasks && Array.isArray(data.tasks)) {
+                  data.tasks.forEach(task => saveTaskToDB(task));
+                }
+                if (data.trash && Array.isArray(data.trash)) {
+                  data.trash.forEach(item => {
+                    const { id, ...rest } = item;
+                    const db = getFirestore();
+                    setDoc(doc(db, 'users', user.uid, 'trash', id), rest);
+                  });
+                }
+                if (data.settings) {
+                  if (data.settings.activityTypes) setActivityTypes(data.settings.activityTypes);
+                  if (data.settings.ppCodes) setPpCodes(data.settings.ppCodes);
+                  if (data.settings.viaticumRates) setViaticumRates(data.settings.viaticumRates);
+                  if (data.settings.monthlyBudgets) setMonthlyBudgets(data.settings.monthlyBudgets);
+                  if (data.settings.lodgingRates) setLodgingRates(data.settings.lodgingRates);
+                  if (data.settings.dayOverrides) setDayOverrides(data.settings.dayOverrides);
+                  if (data.settings.isBudgetLocked !== undefined) setIsBudgetLocked(data.settings.isBudgetLocked);
+                  if (data.settings.isViaticosLocked !== undefined) setIsViaticosLocked(data.settings.isViaticosLocked);
+                  if (data.settings.isTypesLocked !== undefined) setIsTypesLocked(data.settings.isTypesLocked);
+                  if (data.settings.isPPLocked !== undefined) setIsPPLocked(data.settings.isPPLocked);
+                  saveSettingsToDB(data.settings);
+                }
+                alert('Respaldo restaurado desde Storage');
+              } catch (error) {
+                alert('Error al restaurar: ' + error.message);
+              }
           };
 
           const saveDayOverrideToDB = (dateStr, modality) => {
@@ -5230,7 +5450,7 @@ CLOSE_SCRIPT_TAG
               </div>
 
               <TaskFormModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} task={editingTask} day={selectedDay} onSave={handleSaveTask} onDelete={handleDeleteTask} onDuplicate={handleDuplicateTask} tasks={tasks} colors={colors} activityTypes={activityTypes} ppCodes={ppCodes} viaticumRates={viaticumRates} currentMonthBudget={getBudgetStatus(editingTask || { start: selectedDay })} lodgingRates={lodgingRates} sortedActivityTypes={getSortedActivityTypes} getSortedSubtypes={getSortedSubtypes} />
-              <ReportsModal isOpen={isReportsModalOpen} onClose={() => setIsReportsModalOpen(false)} tasks={tasks} markers={markers} dayOverrides={dayOverrides} colors={colors} onImportBackup={handleImportBackup} activityTypes={activityTypes} viaticumRates={viaticumRates}/>
+              <ReportsModal isOpen={isReportsModalOpen} onClose={() => setIsReportsModalOpen(false)} tasks={tasks} markers={markers} dayOverrides={dayOverrides} colors={colors} onImportBackup={handleImportBackup} activityTypes={activityTypes} viaticumRates={viaticumRates} trashTasks={trashTasks} onExportBackup={exportBackup} onImportBackupJSON={importBackup} onUploadBackupToStorage={uploadBackupToStorage} onListStorageBackups={listStorageBackups} onRestoreFromStorage={restoreFromStorageBackup}/>
               <ConfigModal isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} colors={colors} activityTypes={activityTypes} setActivityTypes={setActivityTypes} ppCodes={ppCodes} setPpCodes={setPpCodes} viaticumRates={viaticumRates} setViaticumRates={setViaticumRates} tasks={tasks} onUpdateTasks={batchUpdateTasks} monthlyBudgets={monthlyBudgets} setMonthlyBudgets={setMonthlyBudgets} isBudgetLocked={isBudgetLocked} setIsBudgetLocked={setIsBudgetLocked} lodgingRates={lodgingRates} setLodgingRates={setLodgingRates} isViaticosLocked={isViaticosLocked} setIsViaticosLocked={setIsViaticosLocked} isTypesLocked={isTypesLocked} setIsTypesLocked={setIsTypesLocked} isPPLocked={isPPLocked} setIsPPLocked={setIsPPLocked} />
               <ScheduleAlert task={scheduleAlert} onAction={handleScheduleAction} onClose={() => setScheduleAlert(null)} colors={colors} activityTypes={activityTypes}/>
               <DayModalityModal isOpen={isModalityModalOpen} onClose={() => setIsModalityModalOpen(false)} selectedDay={selectedDay} currentModality={getDayModality(toISODateString(selectedDay))} onSave={(mod) => saveDayOverrideToDB(toISODateString(selectedDay), mod)} colors={colors}/>
