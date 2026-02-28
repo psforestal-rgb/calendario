@@ -1,4 +1,5 @@
-const CACHE_NAME = 'calendario-sinac-v4';
+const APP_VERSION = '2026.02.28.1';
+const CACHE_NAME = 'calendario-sinac-v5';
 
 const ASSETS_TO_CACHE = [
   './',
@@ -38,6 +39,20 @@ function isNoCache(url) {
   return NO_CACHE_DOMAINS.some(domain => url.includes(domain));
 }
 
+// Network fetch with timeout - falls back to cache if network is too slow
+function fetchWithTimeout(request, timeout = 3000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), timeout);
+    fetch(request).then(response => {
+      clearTimeout(timer);
+      resolve(response);
+    }).catch(err => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
@@ -74,6 +89,13 @@ self.addEventListener('activate', event => {
     })
   );
   self.clients.claim();
+});
+
+// Respond to version checks from the app
+self.addEventListener('message', event => {
+  if (event.data === 'GET_VERSION') {
+    event.ports[0].postMessage({ version: APP_VERSION });
+  }
 });
 
 self.addEventListener('fetch', event => {
@@ -126,9 +148,9 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Local assets: network-first strategy
+  // Local assets: network-first strategy with 3s timeout
   event.respondWith(
-    fetch(event.request)
+    fetchWithTimeout(event.request, 3000)
       .then(response => {
         if (response && response.status === 200 && response.type === 'basic') {
           const responseToCache = response.clone();

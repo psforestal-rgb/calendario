@@ -5804,13 +5804,35 @@ CLOSE_SCRIPT_TAG
         root.render(<App />);
     </script>
 
-    <!-- Registrar Service Worker para cache de recursos CDN -->
+    <!-- Registrar Service Worker con auto-actualización forzada -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('SW registrado:', reg.scope))
-            .catch(err => console.warn('SW error:', err));
+          navigator.serviceWorker.register('./sw.js').then(reg => {
+            console.log('SW registrado:', reg.scope);
+            // Forzar chequeo de nueva versión del SW en cada carga de página
+            reg.update();
+            // Detectar cuando se está instalando un SW nuevo
+            reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              if (!newWorker) return;
+              newWorker.addEventListener('statechange', () => {
+                // Nuevo SW activado y ya había un controller previo = actualización
+                if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
+                  console.log('Nueva versión detectada, recargando...');
+                  window.location.reload();
+                }
+              });
+            });
+          }).catch(err => console.warn('SW error:', err));
+          // Recargar automáticamente cuando un nuevo SW tome el control
+          let refreshing = false;
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!refreshing) {
+              refreshing = true;
+              window.location.reload();
+            }
+          });
         });
       }
     </script>
