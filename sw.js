@@ -1,4 +1,4 @@
-const CACHE_NAME = 'calendario-sinac-v3';
+const CACHE_NAME = 'calendario-sinac-v4';
 
 const ASSETS_TO_CACHE = [
   './',
@@ -26,7 +26,8 @@ const CDN_DOMAINS = [
 const NO_CACHE_DOMAINS = [
   'googleapis.com',
   'firebase',
-  'gstatic.com'
+  'gstatic.com',
+  'firebaseio.com'
 ];
 
 function isCDN(url) {
@@ -78,8 +79,18 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = event.request.url;
 
+  // Skip non-GET requests entirely (POST, PUT, etc. should go to network)
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
   // Skip Firebase/Google API requests - they need real-time access
   if (isNoCache(url)) {
+    return;
+  }
+
+  // Skip chrome-extension and other non-http(s) schemes
+  if (!url.startsWith('http')) {
     return;
   }
 
@@ -105,6 +116,9 @@ self.addEventListener('fetch', event => {
               cache.put(event.request, response.clone());
             }
             return response;
+          }).catch(() => {
+            // Return a basic offline response for CDN failures
+            return new Response('', { status: 503, statusText: 'Offline' });
           });
         });
       })
@@ -125,7 +139,10 @@ self.addEventListener('fetch', event => {
         return response;
       })
       .catch(() => {
-        return caches.match(event.request);
+        return caches.match(event.request).then(cached => {
+          // Always return a Response - never undefined
+          return cached || new Response('Offline', { status: 503, statusText: 'Offline' });
+        });
       })
   );
 });

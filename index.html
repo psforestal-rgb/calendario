@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calendario SINAC - Gestión de Actividades</title>
-    
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+    <link rel="apple-touch-icon" href="./icon-192.png">
+
     <!-- Cargar Babel para entender React (versión específica para compatibilidad) -->
     <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js" crossorigin="anonymous"></script>
 
@@ -122,7 +124,7 @@
         // --- FIREBASE IMPORTS ---
         import { initializeApp } from 'firebase/app';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-        import { getFirestore, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, enableIndexedDbPersistence, query, writeBatch, where, getDocs } from 'firebase/firestore';
+        import { initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, query, writeBatch, where, getDocs, getFirestore } from 'firebase/firestore';
         import { getStorage, ref, uploadString, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
 
         // --- DATA SEMILLA (CONSTANTES) ---
@@ -4874,8 +4876,9 @@ CLOSE_SCRIPT_TAG
             };
             const app = initializeApp(firebaseConfig);
             const auth = getAuth(app);
-            const db = getFirestore(app);
-            try { enableIndexedDbPersistence(db).catch(err => console.warn('Persistence:', err.code)); } catch (e) { console.warn('Persistence already enabled'); }
+            try {
+              initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) }) });
+            } catch (e) { /* Firestore already initialized */ }
             signInAnonymously(auth).catch(console.error);
             onAuthStateChanged(auth, setUser);
             window.addEventListener('online', () => setIsOffline(false));
@@ -5103,7 +5106,12 @@ CLOSE_SCRIPT_TAG
                   toDelete.forEach(item => deleteObject(item).catch(console.error));
                 }
               } catch (error) {
-                console.error('Error al subir respaldo a Storage:', error);
+                // CORS errors are expected on GitHub Pages - Firebase Storage needs CORS config
+                if (error?.code === 'storage/unauthorized' || error?.message?.includes('CORS') || error?.message?.includes('Failed to fetch')) {
+                  console.warn('Respaldo a Storage omitido (CORS/permisos). Esto es normal en GitHub Pages. Los datos siguen sincronizados en Firestore.');
+                } else {
+                  console.error('Error al subir respaldo a Storage:', error);
+                }
               }
           };
 
