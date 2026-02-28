@@ -45,6 +45,8 @@
           0%, 100% { box-shadow: 0 0 0 2px #2dd4bf, 0 0 4px #2dd4bf44; }
           50% { box-shadow: 0 0 0 2px #2dd4bf, 0 0 10px #2dd4bf66; }
         }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     </style>
 </head>
 <body>
@@ -61,7 +63,7 @@
           Sun, Star, Repeat, GripVertical, Search, Car, CreditCard, Database, EyeOff,
           Moon, Wifi, WifiOff, Upload, Download, ArrowRightCircle, Save, CalendarPlus,
           DollarSign, Lock, Unlock, TrendingUp, AlertCircle, PieChart, BarChart3, MapPin,
-          User, Phone, Map, ExternalLink, Copy
+          User, Phone, Map, ExternalLink, Copy, RefreshCw
         } from 'lucide-react';
 
         // --- FIREBASE IMPORTS ---
@@ -4584,7 +4586,12 @@ CLOSE_SCRIPT_TAG
           const [user, setUser] = useState(null);
           const [isOffline, setIsOffline] = useState(!navigator.onLine);
           const [dayOverrides, setDayOverrides] = useState({}); 
-          const [resumeTaskId, setResumeTaskId] = useState(null); 
+          const [resumeTaskId, setResumeTaskId] = useState(null);
+
+          // --- ESTADO DE SINCRONIZACIÓN ---
+          const [syncStatus, setSyncStatus] = useState('idle'); // 'idle', 'saving', 'saved', 'error'
+          const [lastSyncTime, setLastSyncTime] = useState(null);
+          const syncTimerRef = useRef(null);
 
           // --- NUEVOS ESTADOS DE CONFIGURACIÓN ---
           const [activityTypes, setActivityTypes] = useState(DEFAULT_ACTIVITY_TYPES);
@@ -4611,7 +4618,36 @@ CLOSE_SCRIPT_TAG
               return 'presencial';
           };
           const getDayModality = (dateStr) => dayOverrides[dateStr] || calculateDefaultModality(dateStr);
-          
+
+          // --- FUNCIONES DE TRACKING DE SINCRONIZACIÓN ---
+          const formatTimeAgo = (date) => {
+            if (!date) return '';
+            const seconds = Math.floor((new Date() - date) / 1000);
+            if (seconds < 5) return 'ahora';
+            if (seconds < 60) return `hace ${seconds}s`;
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `hace ${minutes}m`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `hace ${hours}h`;
+            return date.toLocaleDateString('es-CR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+          };
+
+          const markSaving = () => {
+            setSyncStatus('saving');
+            if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+          };
+          const markSaved = () => {
+            setSyncStatus('saved');
+            setLastSyncTime(new Date());
+            if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+            syncTimerRef.current = setTimeout(() => setSyncStatus('idle'), 8000);
+          };
+          const markSyncError = () => {
+            setSyncStatus('error');
+            if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+            syncTimerRef.current = setTimeout(() => setSyncStatus('idle'), 15000);
+          };
+
           // Helper to get budget data for a specific task's month
           const getBudgetStatus = (task) => {
                if(!task) return null;
@@ -4704,49 +4740,52 @@ CLOSE_SCRIPT_TAG
           // Guardar Configs cuando cambian
           useEffect(() => {
               if(!user) return;
+              markSaving();
               const db = getFirestore();
-
               const settingsRef = doc(db, 'users', user.uid, 'data', 'calendar_settings');
-              // Debounce simple o guardar directo
-              setDoc(settingsRef, { activityTypes, ppCodes, viaticumRates, monthlyBudgets, isBudgetLocked, lodgingRates, isViaticosLocked, isTypesLocked, isPPLocked }, { merge: true });
+              setDoc(settingsRef, { activityTypes, ppCodes, viaticumRates, monthlyBudgets, isBudgetLocked, lodgingRates, isViaticosLocked, isTypesLocked, isPPLocked }, { merge: true })
+                .then(() => markSaved()).catch(() => markSyncError());
           }, [activityTypes, ppCodes, viaticumRates, monthlyBudgets, isBudgetLocked, lodgingRates, isViaticosLocked, isTypesLocked, isPPLocked, user]);
 
           const saveTaskToDB = async (taskData) => {
               if (!user) return;
+              markSaving();
               const db = getFirestore();
 
               const { id, ...data } = taskData;
               if (data.start instanceof Date) data.start = data.start.toISOString();
               if (data.end instanceof Date) data.end = data.end.toISOString();
               try {
-                  if (id && tasks.find(t => t.id === id)) { await updateDoc(doc(db, 'users', user.uid, 'tasks', id), data); } 
+                  if (id && tasks.find(t => t.id === id)) { await updateDoc(doc(db, 'users', user.uid, 'tasks', id), data); }
                   else { await setDoc(doc(db, 'users', user.uid, 'tasks', id || uuid()), data); }
-              } catch (e) { console.error("Error saving task", e); }
+                  markSaved();
+              } catch (e) { console.error("Error saving task", e); markSyncError(); }
           };
 
           const deleteTaskFromDB = async (id) => {
               if (!user) return;
+              markSaving();
               const db = getFirestore();
-
-              await deleteDoc(doc(db, 'users', user.uid, 'tasks', id));
+              try { await deleteDoc(doc(db, 'users', user.uid, 'tasks', id)); markSaved(); }
+              catch(e) { console.error("Error deleting task", e); markSyncError(); }
           };
 
           // --- PAPELERA: Funciones CRUD ---
           const moveTaskToTrash = async (taskId) => {
               if (!user) return;
+              markSaving();
               const db = getFirestore();
 
               const taskToTrash = tasks.find(t => t.id === taskId);
               if (!taskToTrash) return;
               const { id, ...taskData } = taskToTrash;
-              // Guardar en colección trash con timestamp
-              await setDoc(doc(db, 'users', user.uid, 'trash', id), {
-                ...taskData,
-                originalId: id,
-                deletedAt: new Date().toISOString()
-              });
-              // Eliminar de tareas activas
-              await deleteDoc(doc(db, 'users', user.uid, 'tasks', id));
+              try {
+                await setDoc(doc(db, 'users', user.uid, 'trash', id), {
+                  ...taskData, originalId: id, deletedAt: new Date().toISOString()
+                });
+                await deleteDoc(doc(db, 'users', user.uid, 'tasks', id));
+                markSaved();
+              } catch(e) { console.error("Error moving to trash", e); markSyncError(); }
           };
 
           const restoreTaskFromTrash = async (trashItemId) => {
@@ -4796,10 +4835,11 @@ CLOSE_SCRIPT_TAG
 
           const saveSettingsToDB = async (updates) => {
               if (!user) return;
+              markSaving();
               const db = getFirestore();
-
               const settingsRef = doc(db, 'users', user.uid, 'data', 'calendar_settings');
-              await setDoc(settingsRef, updates, { merge: true });
+              try { await setDoc(settingsRef, updates, { merge: true }); markSaved(); }
+              catch(e) { console.error("Error saving settings", e); markSyncError(); }
           };
 
           // --- RESPALDO A FIREBASE STORAGE ---
@@ -5290,6 +5330,29 @@ CLOSE_SCRIPT_TAG
                             <div style={{marginTop:'4px', fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>ID: {user.uid}</div>
                          </div>
                        )}
+
+                       {/* ========== ESTADO DE GUARDADO FIREBASE ========== */}
+                       <div style={{padding:'8px',backgroundColor:colors.bgPrimary,borderRadius:'6px',border:`1px solid ${colors.border}`,marginBottom:'16px'}}>
+                          <div style={{display:'flex',alignItems:'center',gap:'8px',padding:'4px',borderRadius:'6px',
+                            backgroundColor: syncStatus === 'saving' ? 'rgba(237,137,54,0.08)' : syncStatus === 'error' ? 'rgba(245,101,101,0.08)' : syncStatus === 'saved' ? 'rgba(72,187,120,0.08)' : 'transparent'}}>
+                            <div style={{position:'relative',flexShrink:0}}>
+                              <Database size={16} color={syncStatus === 'saving' ? colors.warning : syncStatus === 'error' ? colors.danger : syncStatus === 'saved' ? colors.success : colors.textMuted} />
+                              {syncStatus === 'saving' && <div style={{position:'absolute',top:'-2px',right:'-2px',width:'6px',height:'6px',borderRadius:'50%',backgroundColor:colors.warning,animation:'pulseDot 1s infinite'}}></div>}
+                            </div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:'11px',fontWeight:'600',color: syncStatus === 'saving' ? colors.warning : syncStatus === 'error' ? colors.danger : syncStatus === 'saved' ? colors.success : colors.textSecondary}}>
+                                {syncStatus === 'saving' ? 'Guardando en Firebase...' : syncStatus === 'error' ? 'Error al guardar' : syncStatus === 'saved' ? 'Guardado en Firebase' : 'Firebase sincronizado'}
+                              </div>
+                              {lastSyncTime && <div style={{fontSize:'9px',color:colors.textMuted,marginTop:'1px',fontFamily:'monospace'}}>{formatTimeAgo(lastSyncTime)}</div>}
+                            </div>
+                            <div style={{flexShrink:0}}>
+                              {syncStatus === 'saving' && <RefreshCw size={12} color={colors.warning} style={{animation:'spin 1s linear infinite'}}/>}
+                              {syncStatus === 'saved' && <CheckCircle size={12} color={colors.success}/>}
+                              {syncStatus === 'error' && <AlertCircle size={12} color={colors.danger}/>}
+                              {syncStatus === 'idle' && <CheckCircle size={12} color={colors.textMuted}/>}
+                            </div>
+                          </div>
+                       </div>
 
                        {/* ========== BANNER DE DÍA DE PAGO ========== */}
                        {(() => {
