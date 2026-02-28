@@ -2691,6 +2691,17 @@ body{font-family:var(--font);background:var(--surface);color:var(--ink);line-hei
 
 /* ===== LIVE INDICATOR ===== */
 .live-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;letter-spacing:0.04em;margin-left:8px;vertical-align:middle}
+
+/* ===== SHORTCUT BUTTON ===== */
+.btn-shortcut{
+  padding:6px 14px;background:rgba(255,255,255,0.15);color:var(--white);
+  border:1px solid rgba(255,255,255,0.25);border-radius:4px;font-size:12px;font-weight:600;
+  cursor:pointer;font-family:var(--font);letter-spacing:0.02em;
+  transition:background 0.15s;display:inline-flex;align-items:center;gap:6px;
+  white-space:nowrap;flex-shrink:0;
+}
+.btn-shortcut:hover{background:rgba(255,255,255,0.25)}
+.btn-shortcut svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .live-badge.connected{background:#DCFCE7;color:#166534}
 .live-badge.disconnected{background:#FEF2F2;color:#991B1B}
 .live-badge.connecting{background:#FEF3C7;color:#92400E}
@@ -2786,6 +2797,10 @@ body{font-family:var(--font);background:var(--surface);color:var(--ink);line-hei
       <h1>Programación de Actividades <span class="badge"><span class="badge-dot"></span> Solo Lectura</span><span id="liveBadge" class="live-badge connecting"><span class="live-dot"></span><span id="liveLabel">Conectando...</span></span></h1>
       <div class="sub">SINAC &middot; ACOPAC &middot; Oficina Subregional de Orotina &nbsp;|&nbsp; Generado: GENERATED_DATE<span id="lastSync" class="last-sync"></span></div>
     </div>
+    <button class="btn-shortcut" onclick="crearAccesoDirecto()" title="Guardar en carpeta Agendas ACOPAC en el Escritorio">
+      <svg viewBox="0 0 24 24"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+      Crear Acceso Directo
+    </button>
   </div>
 </div>
 
@@ -3789,6 +3804,35 @@ function init(){
 
   // Connect to Firebase for live updates
   initFirebase();
+}
+
+// ========== CREAR ACCESO DIRECTO ==========
+async function crearAccesoDirecto(){
+  var fileName='visor_programacion_'+toISO(new Date())+'.html';
+  // Intentar File System Access API (Chrome/Edge)
+  if(window.showDirectoryPicker){
+    try{
+      var dirHandle=await window.showDirectoryPicker({startIn:'desktop',mode:'readwrite'});
+      var folderHandle=await dirHandle.getDirectoryHandle('Agendas ACOPAC',{create:true});
+      var fileHandle=await folderHandle.getFileHandle(fileName,{create:true});
+      var writable=await fileHandle.createWritable();
+      await writable.write(new Blob(['<!DOCTYPE html>'+document.documentElement.outerHTML],{type:'text/html;charset=utf-8'}));
+      await writable.close();
+      alert('Archivo guardado en:\\n\\nAgendas ACOPAC / '+fileName+'\\n\\nPuede crear un acceso directo de esa carpeta en su escritorio.');
+      return;
+    }catch(e){
+      if(e.name==='AbortError')return;
+      console.warn('File System API error, usando descarga normal:',e);
+    }
+  }
+  // Fallback: descargar archivo normalmente
+  var blob=new Blob(['<!DOCTYPE html>'+document.documentElement.outerHTML],{type:'text/html;charset=utf-8'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=fileName;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  alert('Archivo descargado: '+fileName+'\\n\\nPara crear el acceso directo:\\n1. Cree una carpeta llamada "Agendas ACOPAC" en su Escritorio\\n2. Mueva el archivo descargado a esa carpeta\\n3. Haga clic derecho en la carpeta > Enviar a > Escritorio (crear acceso directo)');
 }
 
 init();
