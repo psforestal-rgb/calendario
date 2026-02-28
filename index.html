@@ -6,10 +6,10 @@
     <title>Calendario SINAC - Gestión de Actividades</title>
     
     <!-- Cargar Babel para entender React (versión específica para compatibilidad) -->
-    <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
-    
+    <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js" crossorigin="anonymous"></script>
+
     <!-- xlsx-js-style para exportación a XLSX con estilos -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js" crossorigin="anonymous"></script>
     
     <!-- Mapa de Importaciones para que funcionen las librerías desde la nube -->
     <script type="importmap">
@@ -5243,6 +5243,17 @@ CLOSE_SCRIPT_TAG
 
         const root = createRoot(document.getElementById('root'));
         root.render(<App />);
+    </script>
+
+    <!-- Registrar Service Worker para cache de recursos CDN -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('SW registrado:', reg.scope))
+            .catch(err => console.warn('SW error:', err));
+        });
+      }
     </script>
 </body>
 </html>
