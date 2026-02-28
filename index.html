@@ -128,6 +128,8 @@
         import { getStorage, ref, uploadString, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
 
         // --- DATA SEMILLA (CONSTANTES) ---
+        const APP_VERSION = '2026.02.28.3';
+
         const PAYMENTS_2026 = [
           { date: '2026-01-13', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-01-23', name: 'Salario Escolar', type: 'payment', special: true }, { date: '2026-01-28', name: 'Pago Salario IIQ', type: 'payment' },
           { date: '2026-02-13', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-02-25', name: 'Pago Salario IIQ', type: 'payment' },
@@ -5521,7 +5523,7 @@ CLOSE_SCRIPT_TAG
                     <div className="hide-on-mobile" style={{paddingLeft:'8px',borderLeft:`2px solid ${colors.border}`, flexShrink: 0}}>
                        <div style={{display:'flex',alignItems:'center',gap:'8px',color:colors.textMuted,fontSize:'9px',fontWeight:'bold',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'1px', whiteSpace: 'nowrap'}}>
                           <svg viewBox="0 0 500 300" style={{width:'50px', height:'30px', borderRadius:'2px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'}} preserveAspectRatio="none"><rect width="500" height="300" fill="#002b7f"/><rect y="50" width="500" height="200" fill="#ffffff"/><rect y="100" width="500" height="100" fill="#ce1126"/></svg>
-                          <div style={{display: 'flex', flexDirection: 'column'}}><div style={{color:colors.textMuted, fontSize:'9px', fontWeight:'bold', textTransform:'uppercase', letterSpacing:'2px', lineHeight: '1.1'}}>Calendario SINAC</div><h2 style={{fontWeight:'bold', color:colors.accent, fontSize:'14px', margin:0, whiteSpace: 'nowrap', lineHeight: '1.2'}}>Ing. Pablo César Sánchez Núñez</h2></div>
+                          <div style={{display: 'flex', flexDirection: 'column'}}><div style={{color:colors.textMuted, fontSize:'9px', fontWeight:'bold', textTransform:'uppercase', letterSpacing:'2px', lineHeight: '1.1'}}>Calendario SINAC <span style={{fontSize:'8px',opacity:0.5,letterSpacing:'0.5px',fontWeight:'normal'}}>v{APP_VERSION}</span></div><h2 style={{fontWeight:'bold', color:colors.accent, fontSize:'14px', margin:0, whiteSpace: 'nowrap', lineHeight: '1.2'}}>Ing. Pablo César Sánchez Núñez</h2></div>
                        </div>
                     </div>
                  </div>
