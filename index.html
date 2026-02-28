@@ -5073,8 +5073,15 @@ CLOSE_SCRIPT_TAG
           };
 
           // --- RESPALDO A FIREBASE STORAGE ---
+          // Firebase Storage no permite CORS desde GitHub Pages, así que detectamos el origen
+          const isGitHubPages = window.location.hostname.endsWith('.github.io');
+
           const uploadBackupToStorage = async () => {
               if (!user) return;
+              if (isGitHubPages) {
+                console.log('Respaldo a Storage omitido (GitHub Pages). Los datos están sincronizados en Firestore.');
+                return;
+              }
               const backupData = {
                 tasks: tasks,
                 trash: trashTasks,
@@ -5195,6 +5202,7 @@ CLOSE_SCRIPT_TAG
           // --- RESTAURAR DESDE FIREBASE STORAGE ---
           const listStorageBackups = async () => {
               if (!user) return [];
+              if (isGitHubPages) { alert('Los respaldos de Storage no están disponibles desde GitHub Pages. Use la exportación JSON local.'); return []; }
               const storage = getStorage();
               const listRef = ref(storage, `users/${user.uid}/`);
               try {
@@ -5208,6 +5216,7 @@ CLOSE_SCRIPT_TAG
 
           const restoreFromStorageBackup = async (fileName) => {
               if (!user) return;
+              if (isGitHubPages) { alert('Restauración desde Storage no disponible en GitHub Pages.'); return; }
               const storage = getStorage();
               const fileRef = ref(storage, `users/${user.uid}/${fileName}`);
               try {

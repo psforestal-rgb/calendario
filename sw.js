@@ -1,4 +1,4 @@
-const APP_VERSION = '2026.02.28.1';
+const APP_VERSION = '2026.02.28.2';
 const CACHE_NAME = 'calendario-sinac-v5';
 
 const ASSETS_TO_CACHE = [
