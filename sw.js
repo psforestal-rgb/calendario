@@ -1,4 +1,5 @@
-const CACHE_NAME = 'calendario-sinac-v3';
+const APP_VERSION = '2026.02.28.2';
+const CACHE_NAME = 'calendario-sinac-v5';
 
 const ASSETS_TO_CACHE = [
   './',
@@ -26,7 +27,8 @@ const CDN_DOMAINS = [
 const NO_CACHE_DOMAINS = [
   'googleapis.com',
   'firebase',
-  'gstatic.com'
+  'gstatic.com',
+  'firebaseio.com'
 ];
 
 function isCDN(url) {
@@ -35,6 +37,20 @@ function isCDN(url) {
 
 function isNoCache(url) {
   return NO_CACHE_DOMAINS.some(domain => url.includes(domain));
+}
+
+// Network fetch with timeout - falls back to cache if network is too slow
+function fetchWithTimeout(request, timeout = 3000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), timeout);
+    fetch(request).then(response => {
+      clearTimeout(timer);
+      resolve(response);
+    }).catch(err => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
 }
 
 self.addEventListener('install', event => {
@@ -75,11 +91,28 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
+// Respond to version checks from the app
+self.addEventListener('message', event => {
+  if (event.data === 'GET_VERSION') {
+    event.ports[0].postMessage({ version: APP_VERSION });
+  }
+});
+
 self.addEventListener('fetch', event => {
   const url = event.request.url;
 
+  // Skip non-GET requests entirely (POST, PUT, etc. should go to network)
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
   // Skip Firebase/Google API requests - they need real-time access
   if (isNoCache(url)) {
+    return;
+  }
+
+  // Skip chrome-extension and other non-http(s) schemes
+  if (!url.startsWith('http')) {
     return;
   }
 
@@ -105,6 +138,9 @@ self.addEventListener('fetch', event => {
               cache.put(event.request, response.clone());
             }
             return response;
+          }).catch(() => {
+            // Return a basic offline response for CDN failures
+            return new Response('', { status: 503, statusText: 'Offline' });
           });
         });
       })
@@ -112,9 +148,9 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Local assets: network-first strategy
+  // Local assets: network-first strategy with 3s timeout
   event.respondWith(
-    fetch(event.request)
+    fetchWithTimeout(event.request, 3000)
       .then(response => {
         if (response && response.status === 200 && response.type === 'basic') {
           const responseToCache = response.clone();
@@ -125,7 +161,10 @@ self.addEventListener('fetch', event => {
         return response;
       })
       .catch(() => {
-        return caches.match(event.request);
+        return caches.match(event.request).then(cached => {
+          // Always return a Response - never undefined
+          return cached || new Response('Offline', { status: 503, statusText: 'Offline' });
+        });
       })
   );
 });

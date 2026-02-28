@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calendario SINAC - Gestión de Actividades</title>
-    
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+    <link rel="apple-touch-icon" href="./icon-192.png">
+
     <!-- Cargar Babel para entender React (versión específica para compatibilidad) -->
     <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js" crossorigin="anonymous"></script>
 
@@ -122,7 +124,7 @@
         // --- FIREBASE IMPORTS ---
         import { initializeApp } from 'firebase/app';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-        import { getFirestore, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, enableIndexedDbPersistence, query, writeBatch, where, getDocs } from 'firebase/firestore';
+        import { initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, query, writeBatch, where, getDocs, getFirestore } from 'firebase/firestore';
         import { getStorage, ref, uploadString, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
 
         // --- DATA SEMILLA (CONSTANTES) ---
@@ -4874,8 +4876,9 @@ CLOSE_SCRIPT_TAG
             };
             const app = initializeApp(firebaseConfig);
             const auth = getAuth(app);
-            const db = getFirestore(app);
-            try { enableIndexedDbPersistence(db).catch(err => console.warn('Persistence:', err.code)); } catch (e) { console.warn('Persistence already enabled'); }
+            try {
+              initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) }) });
+            } catch (e) { /* Firestore already initialized */ }
             signInAnonymously(auth).catch(console.error);
             onAuthStateChanged(auth, setUser);
             window.addEventListener('online', () => setIsOffline(false));
@@ -5070,8 +5073,15 @@ CLOSE_SCRIPT_TAG
           };
 
           // --- RESPALDO A FIREBASE STORAGE ---
+          // Firebase Storage no permite CORS desde GitHub Pages, así que detectamos el origen
+          const isGitHubPages = window.location.hostname.endsWith('.github.io');
+
           const uploadBackupToStorage = async () => {
               if (!user) return;
+              if (isGitHubPages) {
+                console.log('Respaldo a Storage omitido (GitHub Pages). Los datos están sincronizados en Firestore.');
+                return;
+              }
               const backupData = {
                 tasks: tasks,
                 trash: trashTasks,
@@ -5103,7 +5113,12 @@ CLOSE_SCRIPT_TAG
                   toDelete.forEach(item => deleteObject(item).catch(console.error));
                 }
               } catch (error) {
-                console.error('Error al subir respaldo a Storage:', error);
+                // CORS errors are expected on GitHub Pages - Firebase Storage needs CORS config
+                if (error?.code === 'storage/unauthorized' || error?.message?.includes('CORS') || error?.message?.includes('Failed to fetch')) {
+                  console.warn('Respaldo a Storage omitido (CORS/permisos). Esto es normal en GitHub Pages. Los datos siguen sincronizados en Firestore.');
+                } else {
+                  console.error('Error al subir respaldo a Storage:', error);
+                }
               }
           };
 
@@ -5187,6 +5202,7 @@ CLOSE_SCRIPT_TAG
           // --- RESTAURAR DESDE FIREBASE STORAGE ---
           const listStorageBackups = async () => {
               if (!user) return [];
+              if (isGitHubPages) { alert('Los respaldos de Storage no están disponibles desde GitHub Pages. Use la exportación JSON local.'); return []; }
               const storage = getStorage();
               const listRef = ref(storage, `users/${user.uid}/`);
               try {
@@ -5200,6 +5216,7 @@ CLOSE_SCRIPT_TAG
 
           const restoreFromStorageBackup = async (fileName) => {
               if (!user) return;
+              if (isGitHubPages) { alert('Restauración desde Storage no disponible en GitHub Pages.'); return; }
               const storage = getStorage();
               const fileRef = ref(storage, `users/${user.uid}/${fileName}`);
               try {
@@ -5796,13 +5813,35 @@ CLOSE_SCRIPT_TAG
         root.render(<App />);
     </script>
 
-    <!-- Registrar Service Worker para cache de recursos CDN -->
+    <!-- Registrar Service Worker con auto-actualización forzada -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('SW registrado:', reg.scope))
-            .catch(err => console.warn('SW error:', err));
+          navigator.serviceWorker.register('./sw.js').then(reg => {
+            console.log('SW registrado:', reg.scope);
+            // Forzar chequeo de nueva versión del SW en cada carga de página
+            reg.update();
+            // Detectar cuando se está instalando un SW nuevo
+            reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              if (!newWorker) return;
+              newWorker.addEventListener('statechange', () => {
+                // Nuevo SW activado y ya había un controller previo = actualización
+                if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
+                  console.log('Nueva versión detectada, recargando...');
+                  window.location.reload();
+                }
+              });
+            });
+          }).catch(err => console.warn('SW error:', err));
+          // Recargar automáticamente cuando un nuevo SW tome el control
+          let refreshing = false;
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!refreshing) {
+              refreshing = true;
+              window.location.reload();
+            }
+          });
         });
       }
     </script>
