@@ -26,8 +26,7 @@ const CDN_DOMAINS = [
 const NO_CACHE_DOMAINS = [
   'googleapis.com',
   'firebase',
-  'gstatic.com',
-  'accounts.google.com'
+  'gstatic.com'
 ];
 
 function isCDN(url) {
