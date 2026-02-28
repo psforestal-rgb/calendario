@@ -1,0 +1,67 @@
+body { margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; background-color: #0a1214; color: #e0f0f0; overflow: hidden; }
+#root { height: 100vh; display: flex; flex-direction: column; }
+
+/* Estilos para Scrollbars oscuros */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #0d1a1f; }
+::-webkit-scrollbar-thumb { background: #1e3a3a; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #2a4a4a; }
+
+/* Reset básico */
+* { box-sizing: border-box; }
+button, input, select, textarea { font-family: inherit; }
+
+/* Animación de pulso para actividad en curso */
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 2px #2dd4bf, 0 0 4px #2dd4bf44; }
+  50% { box-shadow: 0 0 0 2px #2dd4bf, 0 0 10px #2dd4bf66; }
+}
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ========== RESPONSIVE SMARTPHONE ========== */
+@media (max-width: 768px) {
+  body { overflow: auto; }
+  #root { height: auto; min-height: 100vh; }
+
+  .mobile-sidebar-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 55 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    background-color: inherit;
+  }
+
+  .calendar-grid-responsive {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .hide-on-mobile { display: none !important; }
+
+  .header-responsive {
+    flex-wrap: wrap !important;
+    padding: 8px !important;
+    gap: 6px !important;
+    overflow-x: visible !important;
+  }
+
+  .modal-responsive {
+    padding: 8px !important;
+    max-height: 100vh !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .calendar-grid-responsive {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Mínimo tamaño de toque para accesibilidad */
+@media (pointer: coarse) {
+  button, [role="button"] {
+    min-height: 36px;
+    min-width: 36px;
+  }
+}
