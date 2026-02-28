@@ -63,7 +63,7 @@
           Sun, Star, Repeat, GripVertical, Search, Car, CreditCard, Database, EyeOff,
           Moon, Wifi, WifiOff, Upload, Download, ArrowRightCircle, Save, CalendarPlus,
           DollarSign, Lock, Unlock, TrendingUp, AlertCircle, PieChart, BarChart3, MapPin,
-          User, Phone, Map, ExternalLink, Copy, RefreshCw
+          User, Phone, Map, ExternalLink, Copy, RefreshCw, CheckCheck
         } from 'lucide-react';
 
         // --- FIREBASE IMPORTS ---
@@ -915,7 +915,53 @@
           );
         };
 
-        const CalendarCell = ({ day, tasks, currentDate, dayTag, markers, onToggleTag, onSelectDay, onAddTask, onEditTask, isSelected, onDrop, colors, activityTypes, isMonthOverBudget, viaticumRates }) => {
+        // --- INDICADOR DE SINCRONIZACIÓN POR TAREA (estilo WhatsApp) ---
+        const SyncIndicator = ({ taskId, taskSyncMap, lastBackupAt, onForceSync, colors, size = 10 }) => {
+          const info = taskSyncMap[taskId];
+          const status = info?.status || 'synced';
+          const syncedAt = info?.at;
+          const isBackedUp = lastBackupAt && syncedAt && syncedAt <= lastBackupAt;
+
+          // Colores según estado
+          const isSaving = status === 'saving';
+          const isError = status === 'error';
+          const isSynced = status === 'synced';
+
+          const color = isSaving ? (colors.warning || '#ED8936')
+                      : isError ? (colors.danger || '#E53E3E')
+                      : isBackedUp ? '#3B82F6'
+                      : (colors.success || '#48BB78');
+
+          const title = isSaving ? 'Guardando en Firebase...'
+                      : isError ? 'Error al sincronizar — clic para reintentar'
+                      : isBackedUp ? 'Sincronizado en Firebase + incluido en último respaldo'
+                      : 'Sincronizado en Firebase — sin respaldo reciente';
+
+          const handleClick = (e) => {
+            e.stopPropagation();
+            if (onForceSync) onForceSync(taskId);
+          };
+
+          return (
+            <span
+              onClick={handleClick}
+              title={title}
+              style={{
+                display:'inline-flex',alignItems:'center',cursor:'pointer',
+                flexShrink:0,opacity: isSaving ? 0.7 : 1,
+                animation: isSaving ? 'pulseDot 1s infinite' : 'none',
+                lineHeight:1
+              }}
+            >
+              {isSaving && <RefreshCw size={size} color={color} style={{animation:'spin 1s linear infinite'}}/>}
+              {isError && <AlertCircle size={size} color={color}/>}
+              {isSynced && !isBackedUp && <CheckCircle size={size} color={color}/>}
+              {isSynced && isBackedUp && <CheckCheck size={size} color={color}/>}
+            </span>
+          );
+        };
+
+        const CalendarCell = ({ day, tasks, currentDate, dayTag, markers, onToggleTag, onSelectDay, onAddTask, onEditTask, isSelected, onDrop, colors, activityTypes, isMonthOverBudget, viaticumRates, taskSyncMap, lastBackupAt, onForceSync }) => {
           const dayStr = toISODateString(day);
           const dayTasks = tasks
             .filter(t => toISODateString(new Date(t.start)) === dayStr)
@@ -1013,10 +1059,11 @@
                          <GripVertical size={8} style={{opacity:0.5,marginTop:'2px',flexShrink:0}}/>
                          {t.status === 'in_progress' && <span style={{fontSize:'7px',fontWeight:'800',color:colors.success,backgroundColor:`${colors.success}22`,padding:'0 3px',borderRadius:'2px',lineHeight:'1.4',flexShrink:0,marginTop:'1px'}}>▶</span>}
                          {showBudgetWarning && <DollarSign size={10} color={colors.danger} style={{marginRight:'2px',marginTop:'2px',flexShrink:0}} />}
-                         <div style={{display:'flex',flexDirection:'column',overflow:'hidden',lineHeight:'1.3'}}>
+                         <div style={{display:'flex',flexDirection:'column',overflow:'hidden',lineHeight:'1.3',flex:1,minWidth:0}}>
                            <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ti?.name || t.activityTypeName || 'Actividad'}</span>
                            {t.fieldData?.expediente && <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:'9px',opacity:0.7}}>{t.fieldData.expediente}</span>}
                          </div>
+                         <SyncIndicator taskId={t.id} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={onForceSync} colors={colors} size={8}/>
                       </div>
                     );
                  })}
@@ -1123,7 +1170,7 @@
           );
         };
 
-        const TaskFormModal = ({ isOpen, onClose, task, day, onSave, onDelete, onDuplicate, tasks, colors, activityTypes, ppCodes, viaticumRates, currentMonthBudget, lodgingRates, sortedActivityTypes, getSortedSubtypes }) => {
+        const TaskFormModal = ({ isOpen, onClose, task, day, onSave, onDelete, onDuplicate, tasks, colors, activityTypes, ppCodes, viaticumRates, currentMonthBudget, lodgingRates, sortedActivityTypes, getSortedSubtypes, taskSyncMap, lastBackupAt, onForceSync }) => {
            if (!isOpen) return null;
            const isNew = !task;
            const taskStatus = task?.status || 'pending';
@@ -1406,6 +1453,22 @@
               <Modal isOpen={isOpen} onClose={onClose} title={isNew ? "Nueva Actividad" : "Detalle de Actividad"} colors={colors}>
                  <div style={{display:'flex',flexDirection:'column',gap:'16px',color:colors.textSecondary}}>
                     
+                    {/* Indicador de sincronización */}
+                    {!isNew && task?.id && (
+                      <div style={{display:'flex',alignItems:'center',gap:'8px',padding:'6px 10px',backgroundColor:colors.bgTertiary,borderRadius:'6px',fontSize:'11px',color:colors.textMuted}}>
+                        <SyncIndicator taskId={task.id} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={onForceSync} colors={colors} size={14}/>
+                        <span>{(() => {
+                          const info = taskSyncMap[task.id];
+                          const st = info?.status || 'synced';
+                          const backed = lastBackupAt && info?.at && info.at <= lastBackupAt;
+                          if (st === 'saving') return 'Guardando en Firebase...';
+                          if (st === 'error') return 'Error de sincronización — clic para reintentar';
+                          if (backed) return 'Sincronizado + Respaldado';
+                          return 'Sincronizado en Firebase';
+                        })()}</span>
+                      </div>
+                    )}
+
                     {!isNew && !showContinuationForm && (
                         <div style={{display:'flex', gap:'8px', flexWrap:'wrap', paddingBottom:'12px', borderBottom:`1px solid ${colors.border}`}}>
                             {taskStatus !== 'in_progress' && (
@@ -4637,6 +4700,14 @@ CLOSE_SCRIPT_TAG
           const [lastSyncTime, setLastSyncTime] = useState(null);
           const syncTimerRef = useRef(null);
 
+          // --- TRACKING POR TAREA (estilo WhatsApp) ---
+          // taskSyncMap: {taskId: {status: 'synced'|'saving'|'error', at: Date}}
+          const [taskSyncMap, setTaskSyncMap] = useState({});
+          const [lastBackupAt, setLastBackupAt] = useState(() => {
+            try { const s = localStorage.getItem('calendario_lastBackupAt'); return s ? new Date(s) : null; }
+            catch(e) { return null; }
+          });
+
           // --- NUEVOS ESTADOS DE CONFIGURACIÓN ---
           const [activityTypes, setActivityTypes] = useState(DEFAULT_ACTIVITY_TYPES);
           const [ppCodes, setPpCodes] = useState(DEFAULT_PP_CODES); // Use the new default array with descriptions
@@ -4735,7 +4806,22 @@ CLOSE_SCRIPT_TAG
             const db = getFirestore();
 
             const tasksQuery = query(collection(db, 'users', user.uid, 'tasks'));
-            onSnapshot(tasksQuery, (snapshot) => { setTasks(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }))); });
+            onSnapshot(tasksQuery, (snapshot) => {
+              const loadedTasks = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+              setTasks(loadedTasks);
+              // Marcar todas las tareas recibidas de Firebase como sincronizadas
+              const now = new Date();
+              setTaskSyncMap(prev => {
+                const next = { ...prev };
+                loadedTasks.forEach(t => {
+                  // Solo actualizar si no está en estado 'saving' (para no pisar el indicador de guardado activo)
+                  if (!next[t.id] || next[t.id].status !== 'saving') {
+                    next[t.id] = { status: 'synced', at: now };
+                  }
+                });
+                return next;
+              });
+            });
 
             // --- PAPELERA: Listener de tareas eliminadas ---
             const trashQuery = query(collection(db, 'users', user.uid, 'trash'));
@@ -4795,15 +4881,31 @@ CLOSE_SCRIPT_TAG
               if (!user) return;
               markSaving();
               const db = getFirestore();
+              const taskId = taskData.id || uuid();
+
+              // Marcar tarea como "guardando"
+              setTaskSyncMap(prev => ({ ...prev, [taskId]: { status: 'saving', at: prev[taskId]?.at || null } }));
 
               const { id, ...data } = taskData;
               if (data.start instanceof Date) data.start = data.start.toISOString();
               if (data.end instanceof Date) data.end = data.end.toISOString();
               try {
                   if (id && tasks.find(t => t.id === id)) { await updateDoc(doc(db, 'users', user.uid, 'tasks', id), data); }
-                  else { await setDoc(doc(db, 'users', user.uid, 'tasks', id || uuid()), data); }
+                  else { await setDoc(doc(db, 'users', user.uid, 'tasks', taskId), data); }
+                  // Marcar tarea como sincronizada
+                  setTaskSyncMap(prev => ({ ...prev, [taskId]: { status: 'synced', at: new Date() } }));
                   markSaved();
-              } catch (e) { console.error("Error saving task", e); markSyncError(); }
+              } catch (e) {
+                  console.error("Error saving task", e);
+                  setTaskSyncMap(prev => ({ ...prev, [taskId]: { status: 'error', at: prev[taskId]?.at || null } }));
+                  markSyncError();
+              }
+          };
+
+          // Forzar re-sincronización de una tarea específica
+          const forceSyncTask = (taskId) => {
+              const task = tasks.find(t => t.id === taskId);
+              if (task) saveTaskToDB(task);
           };
 
           const deleteTaskFromDB = async (id) => {
@@ -4905,6 +5007,10 @@ CLOSE_SCRIPT_TAG
               const storageRef = ref(storage, `users/${user.uid}/${fileName}`);
               try {
                 await uploadString(storageRef, jsonString);
+                // Registrar timestamp del respaldo para doble check
+                const backupTime = new Date();
+                setLastBackupAt(backupTime);
+                try { localStorage.setItem('calendario_lastBackupAt', backupTime.toISOString()); } catch(e) {}
                 console.log('Respaldo automatico subido a Firebase Storage');
                 // Mantener solo los ultimos 10 respaldos
                 const listRef = ref(storage, `users/${user.uid}/`);
@@ -4949,6 +5055,10 @@ CLOSE_SCRIPT_TAG
               a.download = `backup_${new Date().toISOString().slice(0,10)}.json`;
               a.click();
               URL.revokeObjectURL(url);
+              // Registrar timestamp del respaldo para doble check
+              const backupTime = new Date();
+              setLastBackupAt(backupTime);
+              try { localStorage.setItem('calendario_lastBackupAt', backupTime.toISOString()); } catch(e) {}
           };
 
           // --- IMPORTAR RESPALDO (JSON) ---
@@ -5396,6 +5506,12 @@ CLOSE_SCRIPT_TAG
                               {syncStatus === 'idle' && <CheckCircle size={12} color={colors.textMuted}/>}
                             </div>
                           </div>
+                          {/* Leyenda de checks por tarea */}
+                          <div style={{marginTop:'6px',padding:'6px 8px',backgroundColor:colors.bgTertiary,borderRadius:'4px',fontSize:'9px',color:colors.textMuted,lineHeight:'1.6'}}>
+                            <div style={{display:'flex',alignItems:'center',gap:'4px'}}><CheckCircle size={9} color={colors.success}/> Sincronizado en Firebase</div>
+                            <div style={{display:'flex',alignItems:'center',gap:'4px'}}><CheckCheck size={9} color="#3B82F6"/> Sincronizado + Respaldado</div>
+                            <div style={{display:'flex',alignItems:'center',gap:'4px',opacity:0.7}}><span style={{fontSize:'8px'}}>Clic en el icono = forzar sync</span></div>
+                          </div>
                        </div>
 
                        {/* ========== BANNER DE DÍA DE PAGO ========== */}
@@ -5421,7 +5537,10 @@ CLOSE_SCRIPT_TAG
                               <div style={{backgroundColor:colors.bgPrimary,border:`1px solid ${colors.accent}`,borderRadius:'8px',padding:'12px'}}>
                                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'4px'}}>
                                   <span style={{fontSize:'10px',fontWeight:'bold',backgroundColor:colors.success,color:colors.bgPrimary,padding:'2px 8px',borderRadius:'10px',textTransform:'uppercase',display:'flex',alignItems:'center',gap:'4px'}}><PlayCircle size={10}/> En Curso</span>
-                                  <span style={{fontSize:'11px',fontFamily:'monospace',color:colors.accent}}>{new Date(activeTask.start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
+                                  <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
+                                    <SyncIndicator taskId={activeTask.id} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={forceSyncTask} colors={colors} size={12}/>
+                                    <span style={{fontSize:'11px',fontFamily:'monospace',color:colors.accent}}>{new Date(activeTask.start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
+                                  </div>
                                 </div>
                                 <div style={{fontWeight:'bold',color:colors.textSecondary,fontSize:'14px'}}>{activeTask.subtipo || activityTypes.find(at=>at.id===activeTask.typeId)?.name || 'Actividad'}</div>
                                 <div style={{marginTop:'12px',display:'flex',flexDirection:'column',gap:'4px',fontSize:'11px',color:colors.textMuted}}>
@@ -5471,6 +5590,7 @@ CLOSE_SCRIPT_TAG
                                         {task.status==='in_progress' && <span style={{fontSize:'9px',fontWeight:'bold',backgroundColor:colors.success,color:colors.bgPrimary,padding:'2px 6px',borderRadius:'8px'}}>EN CURSO</span>}
                                         {task.status==='paused' && <span style={{fontSize:'9px',fontWeight:'bold',backgroundColor:colors.warning,color:colors.bgPrimary,padding:'2px 6px',borderRadius:'8px'}}>PAUSA</span>}
                                         {task.status==='completed' && <CheckCircle size={16} color={colors.success}/>}
+                                        <SyncIndicator taskId={task.id} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={forceSyncTask} colors={colors} size={12}/>
                                       </div>
                                     </div>
                                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'6px'}}>
@@ -5493,9 +5613,12 @@ CLOSE_SCRIPT_TAG
                             <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
                               {pendingTasks.slice(0,5).map(task => (
                                 <div key={task.id} onClick={()=>{setEditingTask(task);setIsTaskModalOpen(true);}} style={{padding:'8px',backgroundColor:colors.bgPrimary,borderRadius:'4px',borderLeft:`3px solid ${colors.warning}`,fontSize:'12px',color:colors.textSecondary,cursor:'pointer'}}>
-                                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:'4px'}}>
-                                    <span style={{fontWeight:'600',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{task.subtipo||activityTypes.find(at=>at.id===task.typeId)?.name||'Actividad'}</span>
-                                    {task.status==='paused' && <span style={{backgroundColor:'rgba(237,137,54,0.2)',color:colors.warning,padding:'1px 6px',borderRadius:'4px',fontSize:'9px'}}>PAUSA</span>}
+                                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'4px'}}>
+                                    <span style={{fontWeight:'600',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0}}>{task.subtipo||activityTypes.find(at=>at.id===task.typeId)?.name||'Actividad'}</span>
+                                    <div style={{display:'flex',alignItems:'center',gap:'4px',flexShrink:0}}>
+                                      {task.status==='paused' && <span style={{backgroundColor:'rgba(237,137,54,0.2)',color:colors.warning,padding:'1px 6px',borderRadius:'4px',fontSize:'9px'}}>PAUSA</span>}
+                                      <SyncIndicator taskId={task.id} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={forceSyncTask} colors={colors} size={10}/>
+                                    </div>
                                   </div>
                                   <div style={{color:colors.textMuted,fontSize:'11px'}}>Vencimiento: {new Date(task.end).toLocaleDateString()}</div>
                                 </div>
@@ -5536,8 +5659,8 @@ CLOSE_SCRIPT_TAG
                                <div key={d} style={{backgroundColor:colors.bgSecondary,padding:'10px',textAlign:'center',fontSize:'13px',fontWeight:'bold',color:colors.textMuted,borderBottom:`1px solid ${colors.border}`}}>{d}</div>
                             ))}
                             {visibleDays.map(day => (
-                               <CalendarCell 
-                                 key={day.toISOString()} day={day} tasks={filteredTasks} currentDate={currentDate} 
+                               <CalendarCell
+                                 key={day.toISOString()} day={day} tasks={filteredTasks} currentDate={currentDate}
                                  dayTag={getDayModality(toISODateString(day))} markers={markers}
                                  onToggleTag={() => toggleDayTag(day)}
                                  onSelectDay={() => setSelectedDay(day)}
@@ -5549,6 +5672,9 @@ CLOSE_SCRIPT_TAG
                                  activityTypes={activityTypes}
                                  isMonthOverBudget={getMonthBudgetState(day.getMonth()).isOver}
                                  viaticumRates={viaticumRates}
+                                 taskSyncMap={taskSyncMap}
+                                 lastBackupAt={lastBackupAt}
+                                 onForceSync={forceSyncTask}
                                />
                             ))}
                          </div>
@@ -5556,7 +5682,7 @@ CLOSE_SCRIPT_TAG
                  </main>
               </div>
 
-              <TaskFormModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} task={editingTask} day={selectedDay} onSave={handleSaveTask} onDelete={handleDeleteTask} onDuplicate={handleDuplicateTask} tasks={tasks} colors={colors} activityTypes={activityTypes} ppCodes={ppCodes} viaticumRates={viaticumRates} currentMonthBudget={getBudgetStatus(editingTask || { start: selectedDay })} lodgingRates={lodgingRates} sortedActivityTypes={getSortedActivityTypes} getSortedSubtypes={getSortedSubtypes} />
+              <TaskFormModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} task={editingTask} day={selectedDay} onSave={handleSaveTask} onDelete={handleDeleteTask} onDuplicate={handleDuplicateTask} tasks={tasks} colors={colors} activityTypes={activityTypes} ppCodes={ppCodes} viaticumRates={viaticumRates} currentMonthBudget={getBudgetStatus(editingTask || { start: selectedDay })} lodgingRates={lodgingRates} sortedActivityTypes={getSortedActivityTypes} getSortedSubtypes={getSortedSubtypes} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={forceSyncTask} />
               <ReportsModal isOpen={isReportsModalOpen} onClose={() => setIsReportsModalOpen(false)} tasks={tasks} markers={markers} dayOverrides={dayOverrides} colors={colors} onImportBackup={handleImportBackup} activityTypes={activityTypes} viaticumRates={viaticumRates} trashTasks={trashTasks} onExportBackup={exportBackup} onImportBackupJSON={importBackup} onUploadBackupToStorage={uploadBackupToStorage} onListStorageBackups={listStorageBackups} onRestoreFromStorage={restoreFromStorageBackup}/>
               <ConfigModal isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} colors={colors} activityTypes={activityTypes} setActivityTypes={setActivityTypes} ppCodes={ppCodes} setPpCodes={setPpCodes} viaticumRates={viaticumRates} setViaticumRates={setViaticumRates} tasks={tasks} onUpdateTasks={batchUpdateTasks} monthlyBudgets={monthlyBudgets} setMonthlyBudgets={setMonthlyBudgets} isBudgetLocked={isBudgetLocked} setIsBudgetLocked={setIsBudgetLocked} lodgingRates={lodgingRates} setLodgingRates={setLodgingRates} isViaticosLocked={isViaticosLocked} setIsViaticosLocked={setIsViaticosLocked} isTypesLocked={isTypesLocked} setIsTypesLocked={setIsTypesLocked} isPPLocked={isPPLocked} setIsPPLocked={setIsPPLocked} />
               <ScheduleAlert task={scheduleAlert} onAction={handleScheduleAction} onClose={() => setScheduleAlert(null)} colors={colors} activityTypes={activityTypes}/>
