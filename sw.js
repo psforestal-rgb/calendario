@@ -1,4 +1,4 @@
-const CACHE_NAME = 'calendario-sinac-v2';
+const CACHE_NAME = 'calendario-sinac-v3';
 
 const ASSETS_TO_CACHE = [
   './',
@@ -26,7 +26,8 @@ const CDN_DOMAINS = [
 const NO_CACHE_DOMAINS = [
   'googleapis.com',
   'firebase',
-  'gstatic.com'
+  'gstatic.com',
+  'accounts.google.com'
 ];
 
 function isCDN(url) {

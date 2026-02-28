@@ -45,10 +45,15 @@
           0%, 100% { box-shadow: 0 0 0 2px #2dd4bf, 0 0 4px #2dd4bf44; }
           50% { box-shadow: 0 0 0 2px #2dd4bf, 0 0 10px #2dd4bf66; }
         }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     </style>
 </head>
 <body>
     <div id="root"></div>
+
+    <!-- Google Identity Services para respaldo en Google Drive -->
+    <script src="https://accounts.google.com/gsi/client" async defer crossorigin="anonymous"></script>
 
     <!-- CÓDIGO DE LA APLICACIÓN -->
     <script type="text/babel" data-type="module" data-presets="react">
@@ -61,7 +66,7 @@
           Sun, Star, Repeat, GripVertical, Search, Car, CreditCard, Database, EyeOff,
           Moon, Wifi, WifiOff, Upload, Download, ArrowRightCircle, Save, CalendarPlus,
           DollarSign, Lock, Unlock, TrendingUp, AlertCircle, PieChart, BarChart3, MapPin,
-          User, Phone, Map, ExternalLink, Copy
+          User, Phone, Map, ExternalLink, Copy, Cloud, CloudOff, RefreshCw, HardDrive
         } from 'lucide-react';
 
         // --- FIREBASE IMPORTS ---
@@ -4584,7 +4589,22 @@ CLOSE_SCRIPT_TAG
           const [user, setUser] = useState(null);
           const [isOffline, setIsOffline] = useState(!navigator.onLine);
           const [dayOverrides, setDayOverrides] = useState({}); 
-          const [resumeTaskId, setResumeTaskId] = useState(null); 
+          const [resumeTaskId, setResumeTaskId] = useState(null);
+
+          // --- ESTADO DE SINCRONIZACIÓN Y RESPALDO ---
+          const [syncStatus, setSyncStatus] = useState('idle'); // 'idle', 'saving', 'saved', 'error'
+          const [lastSyncTime, setLastSyncTime] = useState(null);
+          const [driveStatus, setDriveStatus] = useState('disconnected'); // 'disconnected', 'connecting', 'connected', 'backing_up', 'backed_up', 'error'
+          const [lastDriveBackup, setLastDriveBackup] = useState(() => {
+            const saved = localStorage.getItem('calendario_last_drive_backup');
+            return saved ? new Date(saved) : null;
+          });
+          const [googleAccessToken, setGoogleAccessToken] = useState(null);
+          const [driveFolderId, setDriveFolderId] = useState(null);
+          const [showDriveConfig, setShowDriveConfig] = useState(false);
+          const [driveClientId, setDriveClientId] = useState(() => localStorage.getItem('calendario_gdrive_client_id') || '');
+          const syncTimerRef = useRef(null);
+          const driveBackupTimerRef = useRef(null);
 
           // --- NUEVOS ESTADOS DE CONFIGURACIÓN ---
           const [activityTypes, setActivityTypes] = useState(DEFAULT_ACTIVITY_TYPES);
@@ -4611,7 +4631,159 @@ CLOSE_SCRIPT_TAG
               return 'presencial';
           };
           const getDayModality = (dateStr) => dayOverrides[dateStr] || calculateDefaultModality(dateStr);
-          
+
+          // --- FUNCIONES DE TRACKING DE SINCRONIZACIÓN ---
+          const formatTimeAgo = (date) => {
+            if (!date) return '';
+            const seconds = Math.floor((new Date() - date) / 1000);
+            if (seconds < 5) return 'ahora';
+            if (seconds < 60) return `hace ${seconds}s`;
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `hace ${minutes}m`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `hace ${hours}h`;
+            return date.toLocaleDateString('es-CR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+          };
+
+          const markSaving = () => {
+            setSyncStatus('saving');
+            if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+          };
+          const markSaved = () => {
+            setSyncStatus('saved');
+            setLastSyncTime(new Date());
+            if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+            syncTimerRef.current = setTimeout(() => setSyncStatus('idle'), 8000);
+            scheduleDriveBackup();
+          };
+          const markSyncError = () => {
+            setSyncStatus('error');
+            if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+            syncTimerRef.current = setTimeout(() => setSyncStatus('idle'), 15000);
+          };
+
+          // --- FUNCIONES DE GOOGLE DRIVE ---
+          const getOrCreateDriveFolder = async (token) => {
+            try {
+              const searchRes = await fetch(
+                `https://www.googleapis.com/drive/v3/files?q=name%3D'CalendarioSINAC_Backups'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+trashed%3Dfalse`,
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              const searchData = await searchRes.json();
+              if (searchData.files?.length > 0) return searchData.files[0].id;
+              const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: 'CalendarioSINAC_Backups', mimeType: 'application/vnd.google-apps.folder' })
+              });
+              const folder = await createRes.json();
+              return folder.id;
+            } catch(e) { console.error('Error con carpeta Drive:', e); return null; }
+          };
+
+          const performDriveBackup = async (token, folderId) => {
+            if (!token || !folderId) return;
+            setDriveStatus('backing_up');
+            const backupData = {
+              version: 1,
+              timestamp: new Date().toISOString(),
+              appId: 'calendariosinacv1',
+              userId: user?.uid,
+              data: {
+                tasks, trash: trashTasks,
+                settings: { activityTypes, ppCodes, viaticumRates, monthlyBudgets, isBudgetLocked, lodgingRates, isViaticosLocked, isTypesLocked, isPPLocked, dayOverrides, resumeTaskId }
+              }
+            };
+            try {
+              const listRes = await fetch(
+                `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+name+contains+'calendario_backup'+and+trashed%3Dfalse&orderBy=modifiedTime+desc&pageSize=1`,
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              const listData = await listRes.json();
+              const boundary = 'calendario_backup_boundary_123';
+              const fileName = `calendario_backup_${new Date().toISOString().split('T')[0]}.json`;
+              const metadata = listData.files?.length > 0
+                ? JSON.stringify({ name: fileName, mimeType: 'application/json' })
+                : JSON.stringify({ name: fileName, mimeType: 'application/json', parents: [folderId] });
+              const fileContent = JSON.stringify(backupData, null, 2);
+              const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${fileContent}\r\n--${boundary}--`;
+              const url = listData.files?.length > 0
+                ? `https://www.googleapis.com/upload/drive/v3/files/${listData.files[0].id}?uploadType=multipart`
+                : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+              const method = listData.files?.length > 0 ? 'PATCH' : 'POST';
+              const uploadRes = await fetch(url, {
+                method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` }, body
+              });
+              if (uploadRes.ok) {
+                setDriveStatus('backed_up');
+                const now = new Date();
+                setLastDriveBackup(now);
+                localStorage.setItem('calendario_last_drive_backup', now.toISOString());
+              } else { setDriveStatus('error'); console.error('Drive upload failed:', await uploadRes.text()); }
+            } catch(e) { console.error('Drive backup error:', e); setDriveStatus('error'); }
+          };
+
+          const connectGoogleDrive = () => {
+            if (!driveClientId) { setShowDriveConfig(true); return; }
+            if (!window.google?.accounts?.oauth2) { alert('Google Identity Services no cargó. Recargue la página.'); return; }
+            const tokenClient = window.google.accounts.oauth2.initTokenClient({
+              client_id: driveClientId,
+              scope: 'https://www.googleapis.com/auth/drive.file',
+              callback: async (tokenResponse) => {
+                if (tokenResponse.error) { setDriveStatus('error'); return; }
+                setGoogleAccessToken(tokenResponse.access_token);
+                setDriveStatus('connected');
+                const fId = await getOrCreateDriveFolder(tokenResponse.access_token);
+                setDriveFolderId(fId);
+                if (fId) performDriveBackup(tokenResponse.access_token, fId);
+              },
+            });
+            setDriveStatus('connecting');
+            tokenClient.requestAccessToken();
+          };
+
+          const saveDriveClientId = (id) => {
+            localStorage.setItem('calendario_gdrive_client_id', id);
+            setDriveClientId(id);
+            setShowDriveConfig(false);
+          };
+
+          const scheduleDriveBackup = () => {
+            if (!googleAccessToken || !driveFolderId) return;
+            if (driveBackupTimerRef.current) clearTimeout(driveBackupTimerRef.current);
+            driveBackupTimerRef.current = setTimeout(() => {
+              performDriveBackup(googleAccessToken, driveFolderId);
+            }, 30000);
+          };
+
+          const restoreFromDrive = async () => {
+            if (!googleAccessToken || !driveFolderId) { alert('Primero conecte Google Drive.'); return; }
+            if (!confirm('¿Restaurar datos desde Google Drive? Esto sobrescribirá los datos actuales.')) return;
+            try {
+              const listRes = await fetch(
+                `https://www.googleapis.com/drive/v3/files?q='${driveFolderId}'+in+parents+and+name+contains+'calendario_backup'+and+trashed%3Dfalse&orderBy=modifiedTime+desc&pageSize=1`,
+                { headers: { Authorization: `Bearer ${googleAccessToken}` } }
+              );
+              const listData = await listRes.json();
+              if (!listData.files?.length) { alert('No se encontró ningún respaldo en Google Drive.'); return; }
+              const fileRes = await fetch(
+                `https://www.googleapis.com/drive/v3/files/${listData.files[0].id}?alt=media`,
+                { headers: { Authorization: `Bearer ${googleAccessToken}` } }
+              );
+              const backupData = await fileRes.json();
+              if (backupData.data?.tasks) { for (const task of backupData.data.tasks) { await saveTaskToDB(task); } }
+              if (backupData.data?.settings) {
+                const s = backupData.data.settings;
+                if (s.activityTypes) setActivityTypes(s.activityTypes);
+                if (s.ppCodes) setPpCodes(s.ppCodes);
+                if (s.viaticumRates) setViaticumRates(s.viaticumRates);
+                if (s.monthlyBudgets) setMonthlyBudgets(s.monthlyBudgets);
+                if (s.lodgingRates) setLodgingRates(s.lodgingRates);
+              }
+              alert(`Respaldo restaurado (${new Date(backupData.timestamp).toLocaleString('es-CR')})`);
+            } catch(e) { console.error('Restore error:', e); alert('Error al restaurar: ' + e.message); }
+          };
+
           // Helper to get budget data for a specific task's month
           const getBudgetStatus = (task) => {
                if(!task) return null;
@@ -4704,49 +4876,52 @@ CLOSE_SCRIPT_TAG
           // Guardar Configs cuando cambian
           useEffect(() => {
               if(!user) return;
+              markSaving();
               const db = getFirestore();
-
               const settingsRef = doc(db, 'users', user.uid, 'data', 'calendar_settings');
-              // Debounce simple o guardar directo
-              setDoc(settingsRef, { activityTypes, ppCodes, viaticumRates, monthlyBudgets, isBudgetLocked, lodgingRates, isViaticosLocked, isTypesLocked, isPPLocked }, { merge: true });
+              setDoc(settingsRef, { activityTypes, ppCodes, viaticumRates, monthlyBudgets, isBudgetLocked, lodgingRates, isViaticosLocked, isTypesLocked, isPPLocked }, { merge: true })
+                .then(() => markSaved()).catch(() => markSyncError());
           }, [activityTypes, ppCodes, viaticumRates, monthlyBudgets, isBudgetLocked, lodgingRates, isViaticosLocked, isTypesLocked, isPPLocked, user]);
 
           const saveTaskToDB = async (taskData) => {
               if (!user) return;
+              markSaving();
               const db = getFirestore();
 
               const { id, ...data } = taskData;
               if (data.start instanceof Date) data.start = data.start.toISOString();
               if (data.end instanceof Date) data.end = data.end.toISOString();
               try {
-                  if (id && tasks.find(t => t.id === id)) { await updateDoc(doc(db, 'users', user.uid, 'tasks', id), data); } 
+                  if (id && tasks.find(t => t.id === id)) { await updateDoc(doc(db, 'users', user.uid, 'tasks', id), data); }
                   else { await setDoc(doc(db, 'users', user.uid, 'tasks', id || uuid()), data); }
-              } catch (e) { console.error("Error saving task", e); }
+                  markSaved();
+              } catch (e) { console.error("Error saving task", e); markSyncError(); }
           };
 
           const deleteTaskFromDB = async (id) => {
               if (!user) return;
+              markSaving();
               const db = getFirestore();
-
-              await deleteDoc(doc(db, 'users', user.uid, 'tasks', id));
+              try { await deleteDoc(doc(db, 'users', user.uid, 'tasks', id)); markSaved(); }
+              catch(e) { console.error("Error deleting task", e); markSyncError(); }
           };
 
           // --- PAPELERA: Funciones CRUD ---
           const moveTaskToTrash = async (taskId) => {
               if (!user) return;
+              markSaving();
               const db = getFirestore();
 
               const taskToTrash = tasks.find(t => t.id === taskId);
               if (!taskToTrash) return;
               const { id, ...taskData } = taskToTrash;
-              // Guardar en colección trash con timestamp
-              await setDoc(doc(db, 'users', user.uid, 'trash', id), {
-                ...taskData,
-                originalId: id,
-                deletedAt: new Date().toISOString()
-              });
-              // Eliminar de tareas activas
-              await deleteDoc(doc(db, 'users', user.uid, 'tasks', id));
+              try {
+                await setDoc(doc(db, 'users', user.uid, 'trash', id), {
+                  ...taskData, originalId: id, deletedAt: new Date().toISOString()
+                });
+                await deleteDoc(doc(db, 'users', user.uid, 'tasks', id));
+                markSaved();
+              } catch(e) { console.error("Error moving to trash", e); markSyncError(); }
           };
 
           const restoreTaskFromTrash = async (trashItemId) => {
@@ -4796,10 +4971,11 @@ CLOSE_SCRIPT_TAG
 
           const saveSettingsToDB = async (updates) => {
               if (!user) return;
+              markSaving();
               const db = getFirestore();
-
               const settingsRef = doc(db, 'users', user.uid, 'data', 'calendar_settings');
-              await setDoc(settingsRef, updates, { merge: true });
+              try { await setDoc(settingsRef, updates, { merge: true }); markSaved(); }
+              catch(e) { console.error("Error saving settings", e); markSyncError(); }
           };
 
           // --- RESPALDO A FIREBASE STORAGE ---
@@ -5290,6 +5466,86 @@ CLOSE_SCRIPT_TAG
                             <div style={{marginTop:'4px', fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>ID: {user.uid}</div>
                          </div>
                        )}
+
+                       {/* ========== ESTADO DE RESPALDO ========== */}
+                       <div style={{padding:'10px',backgroundColor:colors.bgPrimary,borderRadius:'8px',border:`1px solid ${colors.border}`,marginBottom:'16px'}}>
+                          <h4 style={{fontSize:'9px',fontWeight:'bold',color:colors.textMuted,textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'10px',display:'flex',alignItems:'center',gap:'6px'}}>
+                            <HardDrive size={12}/> Estado de Respaldo
+                          </h4>
+
+                          {/* --- Firebase Indicator --- */}
+                          <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'8px',padding:'6px 8px',borderRadius:'6px',
+                            backgroundColor: syncStatus === 'saving' ? 'rgba(237,137,54,0.08)' : syncStatus === 'error' ? 'rgba(245,101,101,0.08)' : syncStatus === 'saved' ? 'rgba(72,187,120,0.08)' : 'transparent'}}>
+                            <div style={{position:'relative',flexShrink:0}}>
+                              <Database size={16} color={syncStatus === 'saving' ? colors.warning : syncStatus === 'error' ? colors.danger : syncStatus === 'saved' ? colors.success : colors.textMuted} />
+                              {syncStatus === 'saving' && <div style={{position:'absolute',top:'-2px',right:'-2px',width:'6px',height:'6px',borderRadius:'50%',backgroundColor:colors.warning,animation:'pulseDot 1s infinite'}}></div>}
+                            </div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:'11px',fontWeight:'600',color: syncStatus === 'saving' ? colors.warning : syncStatus === 'error' ? colors.danger : syncStatus === 'saved' ? colors.success : colors.textSecondary}}>
+                                {syncStatus === 'saving' ? 'Guardando en Firebase...' : syncStatus === 'error' ? 'Error al guardar' : syncStatus === 'saved' ? 'Guardado en Firebase' : 'Firebase sincronizado'}
+                              </div>
+                              {lastSyncTime && <div style={{fontSize:'9px',color:colors.textMuted,marginTop:'1px',fontFamily:'monospace'}}>{formatTimeAgo(lastSyncTime)}</div>}
+                            </div>
+                            <div style={{flexShrink:0}}>
+                              {syncStatus === 'saving' && <RefreshCw size={12} color={colors.warning} style={{animation:'spin 1s linear infinite'}}/>}
+                              {syncStatus === 'saved' && <CheckCircle size={12} color={colors.success}/>}
+                              {syncStatus === 'error' && <AlertCircle size={12} color={colors.danger}/>}
+                              {syncStatus === 'idle' && <CheckCircle size={12} color={colors.textMuted}/>}
+                            </div>
+                          </div>
+
+                          {/* --- Google Drive Indicator --- */}
+                          <div style={{display:'flex',alignItems:'center',gap:'8px',padding:'6px 8px',borderRadius:'6px',
+                            backgroundColor: driveStatus === 'backing_up' ? 'rgba(237,137,54,0.08)' : driveStatus === 'backed_up' ? 'rgba(72,187,120,0.08)' : driveStatus === 'error' ? 'rgba(245,101,101,0.08)' : 'transparent'}}>
+                            <div style={{position:'relative',flexShrink:0}}>
+                              {driveStatus === 'disconnected' ? <CloudOff size={16} color={colors.textMuted}/> : <Cloud size={16} color={driveStatus === 'backing_up' ? colors.warning : driveStatus === 'backed_up' ? colors.success : driveStatus === 'error' ? colors.danger : colors.accent}/>}
+                              {driveStatus === 'backing_up' && <div style={{position:'absolute',top:'-2px',right:'-2px',width:'6px',height:'6px',borderRadius:'50%',backgroundColor:colors.warning,animation:'pulseDot 1s infinite'}}></div>}
+                            </div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:'11px',fontWeight:'600',color: driveStatus === 'disconnected' ? colors.textMuted : driveStatus === 'backing_up' ? colors.warning : driveStatus === 'backed_up' ? colors.success : driveStatus === 'error' ? colors.danger : colors.accent}}>
+                                {driveStatus === 'disconnected' ? 'Google Drive' : driveStatus === 'connecting' ? 'Conectando...' : driveStatus === 'connected' ? 'Drive conectado' : driveStatus === 'backing_up' ? 'Respaldando...' : driveStatus === 'backed_up' ? 'Respaldado en Drive' : 'Error en Drive'}
+                              </div>
+                              {lastDriveBackup && driveStatus !== 'disconnected' && <div style={{fontSize:'9px',color:colors.textMuted,marginTop:'1px',fontFamily:'monospace'}}>{formatTimeAgo(lastDriveBackup)}</div>}
+                              {driveStatus === 'disconnected' && !showDriveConfig && <div style={{fontSize:'9px',color:colors.textMuted,marginTop:'1px'}}>No conectado</div>}
+                            </div>
+                            <div style={{flexShrink:0}}>
+                              {driveStatus === 'disconnected' && (
+                                <button onClick={connectGoogleDrive} style={{fontSize:'9px',padding:'3px 8px',borderRadius:'4px',border:`1px solid ${colors.accent}`,backgroundColor:'transparent',color:colors.accent,cursor:'pointer',fontWeight:'600',whiteSpace:'nowrap'}} title="Conectar Google Drive">Conectar</button>
+                              )}
+                              {driveStatus === 'backing_up' && <RefreshCw size={12} color={colors.warning} style={{animation:'spin 1s linear infinite'}}/>}
+                              {driveStatus === 'backed_up' && (
+                                <div style={{display:'flex',gap:'4px'}}>
+                                  <button onClick={() => performDriveBackup(googleAccessToken, driveFolderId)} style={{padding:'2px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted}} title="Respaldar ahora"><Upload size={12}/></button>
+                                  <button onClick={restoreFromDrive} style={{padding:'2px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted}} title="Restaurar desde Drive"><Download size={12}/></button>
+                                </div>
+                              )}
+                              {driveStatus === 'connected' && <CheckCircle size={12} color={colors.accent}/>}
+                              {driveStatus === 'error' && <button onClick={connectGoogleDrive} style={{fontSize:'9px',padding:'2px 6px',borderRadius:'4px',border:`1px solid ${colors.danger}`,backgroundColor:'transparent',color:colors.danger,cursor:'pointer'}}>Reintentar</button>}
+                            </div>
+                          </div>
+
+                          {/* --- Drive Configuration Mini-Panel --- */}
+                          {showDriveConfig && (
+                            <div style={{marginTop:'8px',padding:'8px',backgroundColor:colors.bgSecondary,borderRadius:'6px',border:`1px solid ${colors.border}`}}>
+                              <div style={{fontSize:'10px',color:colors.textSecondary,marginBottom:'6px'}}>Ingrese su Google Client ID:</div>
+                              <div style={{display:'flex',gap:'4px'}}>
+                                <input type="text" value={driveClientId} onChange={e => setDriveClientId(e.target.value)} placeholder="xxxxxx.apps.googleusercontent.com" style={{flex:1,padding:'4px 8px',fontSize:'10px',borderRadius:'4px',border:`1px solid ${colors.border}`,backgroundColor:colors.bgPrimary,color:colors.textSecondary,fontFamily:'monospace'}}/>
+                                <button onClick={() => { saveDriveClientId(driveClientId); connectGoogleDrive(); }} disabled={!driveClientId} style={{padding:'4px 8px',fontSize:'10px',borderRadius:'4px',border:'none',backgroundColor:driveClientId ? colors.success : colors.bgTertiary,color:driveClientId ? colors.bgPrimary : colors.textMuted,cursor:driveClientId?'pointer':'default',fontWeight:'600'}}>OK</button>
+                                <button onClick={() => setShowDriveConfig(false)} style={{padding:'4px',fontSize:'10px',borderRadius:'4px',border:'none',backgroundColor:'transparent',color:colors.textMuted,cursor:'pointer'}}><X size={12}/></button>
+                              </div>
+                              <div style={{fontSize:'9px',color:colors.textMuted,marginTop:'4px',lineHeight:'1.3'}}>
+                                Obtenga su Client ID en <span style={{color:colors.accent}}>console.cloud.google.com</span> &gt; APIs &gt; Credenciales &gt; OAuth 2.0
+                              </div>
+                            </div>
+                          )}
+
+                          {/* --- Backup from last Drive (shown when disconnected but had previous backup) --- */}
+                          {driveStatus === 'disconnected' && lastDriveBackup && (
+                            <div style={{marginTop:'6px',fontSize:'9px',color:colors.textMuted,textAlign:'center',fontStyle:'italic'}}>
+                              Último respaldo: {lastDriveBackup.toLocaleDateString('es-CR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}
+                            </div>
+                          )}
+                       </div>
 
                        {/* ========== BANNER DE DÍA DE PAGO ========== */}
                        {(() => {
