@@ -4865,6 +4865,16 @@ const App = () => {
       const { id, ...data } = taskData;
       if (data.start instanceof Date) data.start = data.start.toISOString();
       if (data.end instanceof Date) data.end = data.end.toISOString();
+
+      // Campos opcionales para futuro módulo de casos/expedientes.
+      // Se inyectan con defaults solo si no existen, para no alterar
+      // datos de tareas que ya los tengan seteados.
+      if (data.workstream === undefined) data.workstream = 'non_case';
+      if (data.caseUid === undefined) data.caseUid = null;
+      if (data.stepType === undefined) data.stepType = null;
+      if (data.batchUid === undefined) data.batchUid = null;
+      if (data.caseExternalRefText === undefined) data.caseExternalRefText = null;
+
       try {
           if (id && tasks.find(t => t.id === id)) { await updateDoc(doc(db, 'users', user.uid, 'tasks', id), data); }
           else { await setDoc(doc(db, 'users', user.uid, 'tasks', taskId), data); }
