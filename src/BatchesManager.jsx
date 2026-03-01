@@ -281,13 +281,11 @@ const BatchDetail = ({ batchData, cases, tasks, onEdit, onBack, onDelete, colors
 // MODAL PRINCIPAL DE LOTES
 // ============================================================
 
-const BatchesModal = ({ isOpen, onClose, batches, cases, tasks, onSaveBatch, onDeleteBatch, colors, Modal }) => {
+const BatchesModalContent = ({ isOpen, onClose, batches, cases, tasks, onSaveBatch, onDeleteBatch, colors, Modal }) => {
   const [view, setView] = useState('list');
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [editingBatch, setEditingBatch] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-
-  if (!isOpen) return null;
 
   const filteredBatches = useMemo(() => {
     if (!searchQuery.trim()) return batches;
@@ -422,6 +420,12 @@ const BatchesModal = ({ isOpen, onClose, batches, cases, tasks, onSaveBatch, onD
       )}
     </Modal>
   );
+};
+
+
+const BatchesModal = (props) => {
+  if (!props.isOpen) return null;
+  return <BatchesModalContent {...props} />;
 };
 
 // ============================================================
