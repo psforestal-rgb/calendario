@@ -3067,7 +3067,7 @@ function initFirebase(){
       // Listen to settings (dayOverrides, activityTypes, viaticumRates)
       db.collection("users").doc(fbUid).collection("data").doc("calendar_settings")
 .onSnapshot(function(docSnap){
-  if(docSnap.exists()){
+  if(docSnap.exists){
     var s=docSnap.data();
     if(s.overrides)DATA.dayOverrides=s.overrides;
     if(s.activityTypes)DATA.activityTypes=s.activityTypes;
