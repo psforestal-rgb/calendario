@@ -167,6 +167,21 @@ export const REF_CONFIDENCE_LEVELS = [
 ];
 
 // ============================================================
+// TIPOS DE RELACIÓN ENTRE CASOS (case_links)
+// ============================================================
+
+export const CASE_LINK_TYPES = [
+  { value: 'relacionado', label: 'Relacionado', inverse: 'relacionado' },
+  { value: 'derivado_de', label: 'Derivado de', inverse: 'divide_en' },
+  { value: 'divide_en', label: 'Divide en', inverse: 'derivado_de' },
+  { value: 'fusionado_en', label: 'Fusionado en', inverse: 'fusionado_en' }
+];
+
+export const CASE_LINK_TYPE_MAP = Object.fromEntries(
+  CASE_LINK_TYPES.map(t => [t.value, t])
+);
+
+// ============================================================
 // NIVELES DE RIESGO (semáforo)
 // ============================================================
 

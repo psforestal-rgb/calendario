@@ -16,7 +16,7 @@ import {
 import { computeDeadline, toISODate } from './deadlineEngine.js';
 import {
   DEADLINE_PRESETS, DEADLINE_PRESET_MAP, CASE_TYPES,
-  CASE_STATUSES, STEP_TYPES, RISK_LEVELS
+  CASE_STATUSES, STEP_TYPES, RISK_LEVELS, CASE_LINK_TYPES, CASE_LINK_TYPE_MAP
 } from './schemas.js';
 
 // ============================================================
@@ -296,10 +296,180 @@ const CaseForm = ({ caseData, onSave, onCancel, colors, holidays }) => {
 };
 
 // ============================================================
+// RELACIONES ENTRE CASOS (case_links)
+// ============================================================
+
+const CaseRelationsSection = ({ caseUid, cases, caseLinks, onSaveCaseLink, onDeleteCaseLink, colors }) => {
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [linkType, setLinkType] = useState('relacionado');
+  const [targetSearch, setTargetSearch] = useState('');
+  const [selectedTarget, setSelectedTarget] = useState(null);
+  const [note, setNote] = useState('');
+
+  // Links where this case is fromCaseUid or toCaseUid
+  const relatedLinks = useMemo(() => {
+    return (caseLinks || []).filter(l => l.fromCaseUid === caseUid || l.toCaseUid === caseUid);
+  }, [caseLinks, caseUid]);
+
+  // Resolve related case data for display
+  const resolvedLinks = useMemo(() => {
+    return relatedLinks.map(link => {
+      const isFrom = link.fromCaseUid === caseUid;
+      const otherCaseUid = isFrom ? link.toCaseUid : link.fromCaseUid;
+      const otherCase = cases.find(c => c.caseUid === otherCaseUid);
+      // Show the type from this case's perspective
+      const displayType = isFrom
+        ? link.type
+        : (CASE_LINK_TYPE_MAP[link.type]?.inverse || link.type);
+      const displayLabel = CASE_LINK_TYPE_MAP[displayType]?.label || displayType;
+      return { ...link, otherCase, otherCaseUid, displayLabel };
+    });
+  }, [relatedLinks, cases, caseUid]);
+
+  // Search for target cases (exclude self)
+  const searchResults = useMemo(() => {
+    if (!targetSearch.trim()) return [];
+    const q = targetSearch.toLowerCase();
+    return cases.filter(c =>
+      c.caseUid !== caseUid && (
+        c.title?.toLowerCase().includes(q) ||
+        c.caseType?.toLowerCase().includes(q) ||
+        c.externalRefs?.some(r => r.value?.toLowerCase().includes(q))
+      )
+    ).slice(0, 5);
+  }, [targetSearch, cases, caseUid]);
+
+  const handleAdd = () => {
+    if (!selectedTarget) return;
+    const linkData = {
+      linkUid: Date.now().toString(36) + Math.random().toString(36).substr(2),
+      fromCaseUid: caseUid,
+      toCaseUid: selectedTarget.caseUid,
+      type: linkType,
+      note: note.trim() || null,
+      createdAt: new Date().toISOString()
+    };
+    onSaveCaseLink(linkData);
+    setShowAddForm(false);
+    setSelectedTarget(null);
+    setTargetSearch('');
+    setNote('');
+    setLinkType('relacionado');
+  };
+
+  const handleDelete = (linkUid) => {
+    if (confirm('¿Eliminar esta relación?')) {
+      onDeleteCaseLink(linkUid);
+    }
+  };
+
+  const inputStyle = { width: '100%', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgPrimary, color: colors.textPrimary, fontSize: '13px', boxSizing: 'border-box' };
+  const sectionTitle = { fontSize: '13px', fontWeight: '700', color: colors.textPrimary, marginBottom: '8px', marginTop: '16px' };
+
+  return (
+    <div>
+      <div style={{ ...sectionTitle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>Relaciones ({resolvedLinks.length})</span>
+        <button onClick={() => setShowAddForm(!showAddForm)} style={{ fontSize: '11px', color: colors.accent, background: 'none', border: `1px solid ${colors.accent}44`, borderRadius: '4px', padding: '3px 8px', cursor: 'pointer' }}>
+          {showAddForm ? 'Cancelar' : '+ Agregar relación'}
+        </button>
+      </div>
+
+      {/* Add relation form */}
+      {showAddForm && (
+        <div style={{ padding: '10px', backgroundColor: colors.bgTertiary, borderRadius: '8px', border: `1px solid ${colors.border}`, marginBottom: '10px' }}>
+          <div style={{ marginBottom: '8px' }}>
+            <label style={{ display: 'block', fontSize: '11px', color: colors.textMuted, marginBottom: '4px' }}>Tipo de relación</label>
+            <select style={inputStyle} value={linkType} onChange={e => setLinkType(e.target.value)}>
+              {CASE_LINK_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '8px' }}>
+            <label style={{ display: 'block', fontSize: '11px', color: colors.textMuted, marginBottom: '4px' }}>Caso destino</label>
+            {selectedTarget ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', backgroundColor: colors.bgPrimary, borderRadius: '6px', border: `1px solid ${colors.accent}44` }}>
+                <span style={{ fontSize: '12px', color: colors.textPrimary }}>{selectedTarget.title || selectedTarget.caseType}</span>
+                <button onClick={() => { setSelectedTarget(null); setTargetSearch(''); }} style={{ padding: '2px', background: 'none', border: 'none', color: colors.textMuted, cursor: 'pointer' }}><X size={12} /></button>
+              </div>
+            ) : (
+              <>
+                <div style={{ position: 'relative' }}>
+                  <Search size={13} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: colors.textMuted }} />
+                  <input type="text" placeholder="Buscar caso..." style={{ ...inputStyle, paddingLeft: '28px' }} value={targetSearch} onChange={e => setTargetSearch(e.target.value)} />
+                </div>
+                {searchResults.length > 0 && (
+                  <div style={{ marginTop: '4px' }}>
+                    {searchResults.map(c => (
+                      <div key={c.caseUid} onClick={() => { setSelectedTarget(c); setTargetSearch(''); }} style={{
+                        padding: '5px 8px', marginBottom: '2px', borderRadius: '4px', cursor: 'pointer',
+                        backgroundColor: colors.bgPrimary, border: `1px solid ${colors.border}`, fontSize: '12px', color: colors.textPrimary
+                      }}>
+                        {c.title || c.caseType}
+                        {c.externalRefs?.filter(r => r.value).length > 0 && (
+                          <span style={{ fontSize: '10px', color: colors.textMuted, marginLeft: '6px' }}>
+                            {c.externalRefs.filter(r => r.value).map(r => `${r.system}: ${r.value}`).join(', ')}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {targetSearch && searchResults.length === 0 && (
+                  <div style={{ fontSize: '11px', color: colors.textMuted, textAlign: 'center', padding: '4px' }}>Sin resultados</div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div style={{ marginBottom: '8px' }}>
+            <label style={{ display: 'block', fontSize: '11px', color: colors.textMuted, marginBottom: '4px' }}>Nota (opcional)</label>
+            <input type="text" style={inputStyle} value={note} onChange={e => setNote(e.target.value)} placeholder="Motivo de la relación..." />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button onClick={handleAdd} disabled={!selectedTarget} style={{
+              padding: '6px 14px', backgroundColor: selectedTarget ? colors.success : colors.textMuted + '44',
+              color: selectedTarget ? colors.bgPrimary : colors.textMuted,
+              fontWeight: 'bold', borderRadius: '6px', border: 'none', cursor: selectedTarget ? 'pointer' : 'default',
+              fontSize: '12px'
+            }}>
+              Agregar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* List existing relations */}
+      {resolvedLinks.length === 0 && !showAddForm ? (
+        <div style={{ fontSize: '12px', color: colors.textMuted, padding: '8px 0' }}>Sin relaciones con otros casos.</div>
+      ) : (
+        resolvedLinks.map(link => (
+          <div key={link.linkUid || link.id} style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '6px 8px', marginBottom: '4px', backgroundColor: colors.bgPrimary,
+            borderRadius: '6px', border: `1px solid ${colors.border}`, fontSize: '12px'
+          }}>
+            <div>
+              <span style={{ color: colors.accent, fontWeight: '600', marginRight: '6px' }}>{link.displayLabel}</span>
+              <span style={{ color: colors.textPrimary }}>{link.otherCase?.title || link.otherCase?.caseType || link.otherCaseUid}</span>
+              {link.note && <span style={{ color: colors.textMuted, marginLeft: '6px', fontSize: '10px' }}>— {link.note}</span>}
+            </div>
+            <button onClick={() => handleDelete(link.linkUid || link.id)} style={{ padding: '2px 4px', background: 'none', border: 'none', color: colors.danger, cursor: 'pointer', opacity: 0.6 }}>
+              <Trash2 size={12} />
+            </button>
+          </div>
+        ))
+      )}
+    </div>
+  );
+};
+
+// ============================================================
 // VISTA DETALLE DE CASO
 // ============================================================
 
-const CaseDetail = ({ caseData, onEdit, onBack, onDelete, colors, holidays, tasks }) => {
+const CaseDetail = ({ caseData, onEdit, onBack, onDelete, colors, holidays, tasks, caseLinks, onSaveCaseLink, onDeleteCaseLink, cases }) => {
   const baseDate = caseData.receptionDateReal || caseData.receptionDateEstimated || null;
 
   const deadlineResult = useMemo(() => {
@@ -406,6 +576,16 @@ const CaseDetail = ({ caseData, onEdit, onBack, onDelete, colors, holidays, task
         ))
       )}
 
+      {/* Relaciones entre casos */}
+      <CaseRelationsSection
+        caseUid={caseData.caseUid}
+        cases={cases}
+        caseLinks={caseLinks}
+        onSaveCaseLink={onSaveCaseLink}
+        onDeleteCaseLink={onDeleteCaseLink}
+        colors={colors}
+      />
+
       {/* Notas */}
       {caseData.notes && (
         <>
@@ -431,7 +611,7 @@ const CaseDetail = ({ caseData, onEdit, onBack, onDelete, colors, holidays, task
 // MODAL PRINCIPAL DE CASOS
 // ============================================================
 
-const CasesModal = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, colors, holidays, tasks, Modal }) => {
+const CasesModal = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLinks, onSaveCaseLink, onDeleteCaseLink, colors, holidays, tasks, Modal }) => {
   const [view, setView] = useState('list'); // 'list' | 'detail' | 'form'
   const [selectedCase, setSelectedCase] = useState(null);
   const [editingCase, setEditingCase] = useState(null);
@@ -560,6 +740,10 @@ const CasesModal = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, colors, 
           colors={colors}
           holidays={holidays}
           tasks={tasks}
+          cases={cases}
+          caseLinks={caseLinks}
+          onSaveCaseLink={onSaveCaseLink}
+          onDeleteCaseLink={onDeleteCaseLink}
         />
       )}
 

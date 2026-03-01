@@ -4669,6 +4669,7 @@ const App = () => {
   const [trashTasks, setTrashTasks] = useState([]);
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
   const [cases, setCases] = useState([]);
+  const [caseLinks, setCaseLinks] = useState([]);
   const [isCasesModalOpen, setIsCasesModalOpen] = useState(false);
   const [markers] = useState([...PAYMENTS_2026, ...HOLIDAYS_CR_2026, ...EFEMERIDES_2026, ...MOON_PHASES_2026]);
   const [user, setUser] = useState(null);
@@ -4809,6 +4810,12 @@ const App = () => {
     const casesQuery = query(collection(db, 'users', user.uid, 'cases'));
     onSnapshot(casesQuery, (snapshot) => {
       setCases(snapshot.docs.map(d => ({ ...d.data(), id: d.id })));
+    });
+
+    // --- CASE LINKS (relaciones entre casos): Listener ---
+    const caseLinksQuery = query(collection(db, 'users', user.uid, 'case_links'));
+    onSnapshot(caseLinksQuery, (snapshot) => {
+      setCaseLinks(snapshot.docs.map(d => ({ ...d.data(), id: d.id })));
     });
 
     // --- PAPELERA: Listener de tareas eliminadas ---
@@ -4989,6 +4996,35 @@ const App = () => {
       markSaved();
     } catch (e) {
       console.error("Error deleting case", e);
+      markSyncError();
+    }
+  };
+
+  // --- CASE LINKS (relaciones entre casos): CRUD ---
+  const saveCaseLinkToDB = async (linkData) => {
+    if (!user) return;
+    markSaving();
+    const db = getFirestore();
+    const linkUid = linkData.linkUid;
+    const { id, ...data } = linkData;
+    try {
+      await setDoc(doc(db, 'users', user.uid, 'case_links', linkUid), data, { merge: true });
+      markSaved();
+    } catch (e) {
+      console.error("Error saving case link", e);
+      markSyncError();
+    }
+  };
+
+  const deleteCaseLinkFromDB = async (linkUid) => {
+    if (!user) return;
+    markSaving();
+    const db = getFirestore();
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'case_links', linkUid));
+      markSaved();
+    } catch (e) {
+      console.error("Error deleting case link", e);
       markSyncError();
     }
   };
@@ -5746,7 +5782,7 @@ const App = () => {
 
       <TaskFormModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} task={editingTask} day={selectedDay} onSave={handleSaveTask} onDelete={handleDeleteTask} onDuplicate={handleDuplicateTask} tasks={tasks} colors={colors} activityTypes={activityTypes} ppCodes={ppCodes} viaticumRates={viaticumRates} currentMonthBudget={getBudgetStatus(editingTask || { start: selectedDay })} lodgingRates={lodgingRates} sortedActivityTypes={getSortedActivityTypes} getSortedSubtypes={getSortedSubtypes} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={forceSyncTask} cases={cases} />
       <ReportsModal isOpen={isReportsModalOpen} onClose={() => setIsReportsModalOpen(false)} tasks={tasks} markers={markers} dayOverrides={dayOverrides} colors={colors} onImportBackup={handleImportBackup} activityTypes={activityTypes} viaticumRates={viaticumRates} trashTasks={trashTasks} onExportBackup={exportBackup} onImportBackupJSON={importBackup} onUploadBackupToStorage={uploadBackupToStorage} onListStorageBackups={listStorageBackups} onRestoreFromStorage={restoreFromStorageBackup}/>
-      <CasesModal isOpen={isCasesModalOpen} onClose={() => setIsCasesModalOpen(false)} cases={cases} onSaveCase={saveCaseToDB} onDeleteCase={deleteCaseFromDB} colors={colors} holidays={holidayDates} tasks={tasks} Modal={Modal} />
+      <CasesModal isOpen={isCasesModalOpen} onClose={() => setIsCasesModalOpen(false)} cases={cases} onSaveCase={saveCaseToDB} onDeleteCase={deleteCaseFromDB} caseLinks={caseLinks} onSaveCaseLink={saveCaseLinkToDB} onDeleteCaseLink={deleteCaseLinkFromDB} colors={colors} holidays={holidayDates} tasks={tasks} Modal={Modal} />
       <ConfigModal isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} colors={colors} activityTypes={activityTypes} setActivityTypes={setActivityTypes} ppCodes={ppCodes} setPpCodes={setPpCodes} viaticumRates={viaticumRates} setViaticumRates={setViaticumRates} tasks={tasks} onUpdateTasks={batchUpdateTasks} monthlyBudgets={monthlyBudgets} setMonthlyBudgets={setMonthlyBudgets} isBudgetLocked={isBudgetLocked} setIsBudgetLocked={setIsBudgetLocked} lodgingRates={lodgingRates} setLodgingRates={setLodgingRates} isViaticosLocked={isViaticosLocked} setIsViaticosLocked={setIsViaticosLocked} isTypesLocked={isTypesLocked} setIsTypesLocked={setIsTypesLocked} isPPLocked={isPPLocked} setIsPPLocked={setIsPPLocked} />
       <ScheduleAlert task={scheduleAlert} onAction={handleScheduleAction} onClose={() => setScheduleAlert(null)} colors={colors} activityTypes={activityTypes}/>
       <DayModalityModal isOpen={isModalityModalOpen} onClose={() => setIsModalityModalOpen(false)} selectedDay={selectedDay} currentModality={getDayModality(toISODateString(selectedDay))} onSave={(mod) => saveDayOverrideToDB(toISODateString(selectedDay), mod)} colors={colors}/>
