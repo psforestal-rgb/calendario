@@ -611,7 +611,7 @@ const CaseDetail = ({ caseData, onEdit, onBack, onDelete, colors, holidays, task
 // MODAL PRINCIPAL DE CASOS
 // ============================================================
 
-const CasesModalContent = ({ onClose, cases, onSaveCase, onDeleteCase, caseLinks, onSaveCaseLink, onDeleteCaseLink, colors, holidays, tasks, Modal }) => {
+const CasesModalContent = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLinks, onSaveCaseLink, onDeleteCaseLink, colors, holidays, tasks, Modal }) => {
   const [view, setView] = useState('list'); // 'list' | 'detail' | 'form'
   const [selectedCase, setSelectedCase] = useState(null);
   const [editingCase, setEditingCase] = useState(null);
@@ -664,7 +664,7 @@ const CasesModalContent = ({ onClose, cases, onSaveCase, onDeleteCase, caseLinks
   const goBack = () => { setView('list'); setSelectedCase(null); setEditingCase(null); };
 
   return (
-    <Modal isOpen onClose={onClose} title="Casos / Expedientes" size="lg" colors={colors}>
+    <Modal isOpen={isOpen} onClose={onClose} title="Casos / Expedientes" size="lg" colors={colors}>
       {view === 'list' && (
         <div>
           {/* Barra de búsqueda + botón crear */}

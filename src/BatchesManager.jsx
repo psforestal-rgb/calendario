@@ -281,7 +281,7 @@ const BatchDetail = ({ batchData, cases, tasks, onEdit, onBack, onDelete, colors
 // MODAL PRINCIPAL DE LOTES
 // ============================================================
 
-const BatchesModalContent = ({ onClose, batches, cases, tasks, onSaveBatch, onDeleteBatch, colors, Modal }) => {
+const BatchesModalContent = ({ isOpen, onClose, batches, cases, tasks, onSaveBatch, onDeleteBatch, colors, Modal }) => {
   const [view, setView] = useState('list');
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [editingBatch, setEditingBatch] = useState(null);
@@ -325,7 +325,7 @@ const BatchesModalContent = ({ onClose, batches, cases, tasks, onSaveBatch, onDe
   const goBack = () => { setView('list'); setSelectedBatch(null); setEditingBatch(null); };
 
   return (
-    <Modal isOpen onClose={onClose} title="Lotes" size="lg" colors={colors}>
+    <Modal isOpen={isOpen} onClose={onClose} title="Lotes" size="lg" colors={colors}>
       {view === 'list' && (
         <div>
           {/* Barra de búsqueda + botón crear */}
