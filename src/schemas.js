@@ -167,6 +167,16 @@ export const REF_CONFIDENCE_LEVELS = [
 ];
 
 // ============================================================
+// ESTADOS DE LOTE (batches)
+// ============================================================
+
+export const BATCH_STATUSES = [
+  { value: 'abierto', label: 'Abierto' },
+  { value: 'en_progreso', label: 'En progreso' },
+  { value: 'cerrado', label: 'Cerrado' }
+];
+
+// ============================================================
 // TIPOS DE RELACIÓN ENTRE CASOS (case_links)
 // ============================================================
 

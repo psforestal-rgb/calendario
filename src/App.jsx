@@ -6,7 +6,7 @@ import {
   Sun, Star, Repeat, GripVertical, Search, Car, CreditCard, Database, EyeOff,
   Moon, Wifi, WifiOff, Upload, Download, ArrowRightCircle, Save, CalendarPlus,
   DollarSign, Lock, Unlock, TrendingUp, AlertCircle, PieChart, BarChart3, MapPin,
-  User, Phone, Map, ExternalLink, Copy, RefreshCw, CheckCheck, Briefcase
+  User, Phone, Map, ExternalLink, Copy, RefreshCw, CheckCheck, Briefcase, Layers
 } from 'lucide-react';
 
 import XLSX from 'xlsx-js-style';
@@ -17,6 +17,7 @@ import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, query, writeBatch, where, getDocs, getFirestore } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
 import { CasesModal, CaseLinkSection } from './CasesManager.jsx';
+import { BatchesModal, BatchLinkSection } from './BatchesManager.jsx';
 
 // --- DATA SEMILLA (CONSTANTES) ---
 const APP_VERSION = '2026.03.01.1';
@@ -1146,7 +1147,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, colors, rende
   );
 };
 
-const TaskFormModal = ({ isOpen, onClose, task, day, onSave, onDelete, onDuplicate, tasks, colors, activityTypes, ppCodes, viaticumRates, currentMonthBudget, lodgingRates, sortedActivityTypes, getSortedSubtypes, taskSyncMap, lastBackupAt, onForceSync, cases }) => {
+const TaskFormModal = ({ isOpen, onClose, task, day, onSave, onDelete, onDuplicate, tasks, colors, activityTypes, ppCodes, viaticumRates, currentMonthBudget, lodgingRates, sortedActivityTypes, getSortedSubtypes, taskSyncMap, lastBackupAt, onForceSync, cases, batches }) => {
    if (!isOpen) return null;
    const isNew = !task;
    const taskStatus = task?.status || 'pending';
@@ -1828,6 +1829,9 @@ const TaskFormModal = ({ isOpen, onClose, task, day, onSave, onDelete, onDuplica
             {/* Sección Caso / Expediente (opcional) */}
             {cases && <CaseLinkSection form={form} setForm={setForm} cases={cases} colors={colors} />}
 
+            {/* Sección Lote (opcional) */}
+            {batches && <BatchLinkSection form={form} setForm={setForm} batches={batches} colors={colors} />}
+
             <div>
                <label style={labelStyle}>Observaciones</label>
                <textarea style={{...inputStyle,height:'80px',resize:'vertical'}} value={form.observations} onChange={e=>setForm({...form, observations: e.target.value})}></textarea>
@@ -2304,54 +2308,82 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
       
     } else if (mode === 'realized') {
       // ===== ACTIVIDADES REALIZADAS =====
-      wsData.push([
+      const hasCaseData = reportData.realized.some(t => t.caseUid || t.caseExternalRefText || t.batchUid);
+      const realizedHeaders = [
         { v: 'Fecha', s: headerStyle },
         { v: 'Actividad', s: headerStyle },
         { v: 'N° Expediente', s: headerStyle },
         { v: 'Oficio', s: headerStyle },
         { v: 'Estado', s: headerStyle },
         { v: 'Tiempo', s: headerStyle }
-      ]);
-      
+      ];
+      if (hasCaseData) {
+        realizedHeaders.push({ v: 'Caso', s: headerStyle });
+        realizedHeaders.push({ v: 'Lote', s: headerStyle });
+      }
+      wsData.push(realizedHeaders);
+
       reportData.realized.forEach(t => {
         const dur = (t.sessions || []).reduce((a, s) => a + ((s.end ? new Date(s.end) : new Date()) - new Date(s.start)), 0);
-        wsData.push([
+        const linkedCase = t.caseUid && cases ? cases.find(c => c.caseUid === t.caseUid) : null;
+        const linkedBatch = t.batchUid && batches ? batches.find(b => b.batchUid === t.batchUid) : null;
+        const row = [
           { v: new Date(t.start).toLocaleDateString('es-CR'), s: cellStyleCenter },
           { v: t.activityTypeName, s: cellStyleLeft },
           { v: t.fieldData?.expediente || '', s: cellStyleLeft },
           { v: t.fieldData?.informe || '', s: cellStyleLeft },
           { v: t.status, s: cellStyleCenter },
           { v: formatDuration(dur), s: cellStyleCenter }
-        ]);
+        ];
+        if (hasCaseData) {
+          row.push({ v: linkedCase?.title || t.caseExternalRefText || '', s: cellStyleLeft });
+          row.push({ v: linkedBatch?.title || '', s: cellStyleLeft });
+        }
+        wsData.push(row);
       });
-      
+
       colWidths = [{ wch: 12 }, { wch: 40 }, { wch: 18 }, { wch: 16 }, { wch: 15 }, { wch: 12 }];
+      if (hasCaseData) { colWidths.push({ wch: 22 }); colWidths.push({ wch: 18 }); }
       fileName = 'reporte_realizadas';
       
     } else if (mode === 'pending') {
       // ===== ACTIVIDADES PENDIENTES =====
-      wsData.push([
+      const hasCaseDataPending = reportData.pending.some(t => t.caseUid || t.caseExternalRefText || t.batchUid);
+      const pendingHeaders = [
         { v: 'Fecha Original', s: headerStyle },
         { v: 'Actividad', s: headerStyle },
         { v: 'Rezago (días)', s: headerStyle },
         { v: 'Tiempo Invertido', s: headerStyle },
         { v: 'Sesiones', s: headerStyle }
-      ]);
-      
+      ];
+      if (hasCaseDataPending) {
+        pendingHeaders.push({ v: 'Caso', s: headerStyle });
+        pendingHeaders.push({ v: 'Lote', s: headerStyle });
+      }
+      wsData.push(pendingHeaders);
+
       reportData.pending.forEach(t => {
         const lag = Math.floor((new Date() - new Date(t.start)) / (1000 * 60 * 60 * 24));
         const dur = (t.sessions || []).reduce((a, s) => a + ((s.end ? new Date(s.end) : new Date()) - new Date(s.start)), 0);
         const desc = `${t.activityTypeName}${t.subtipo ? ' - ' + t.subtipo : ''} ${t.fieldData?.expediente ? 'Exp: ' + t.fieldData.expediente : ''} ${t.fieldData?.informe ? 'Inf: ' + t.fieldData.informe : ''}`;
-        wsData.push([
+        const linkedCase = t.caseUid && cases ? cases.find(c => c.caseUid === t.caseUid) : null;
+        const linkedBatch = t.batchUid && batches ? batches.find(b => b.batchUid === t.batchUid) : null;
+        const row = [
           { v: new Date(t.start).toLocaleDateString('es-CR'), s: cellStyleCenter },
           { v: desc, s: cellStyleLeft },
           { v: lag > 0 ? lag : 0, s: cellStyleCenter },
           { v: formatDuration(dur), s: cellStyleCenter },
           { v: t.sessions ? t.sessions.length : 0, s: cellStyleCenter }
-        ]);
+        ];
+        if (hasCaseDataPending) {
+          row.push({ v: linkedCase?.title || t.caseExternalRefText || '', s: cellStyleLeft });
+          row.push({ v: linkedBatch?.title || '', s: cellStyleLeft });
+        }
+        wsData.push(row);
       });
-      
+
       colWidths = [{ wch: 14 }, { wch: 50 }, { wch: 14 }, { wch: 16 }, { wch: 10 }];
+      if (hasCaseDataPending) { colWidths.push({ wch: 22 }); colWidths.push({ wch: 18 }); }
       fileName = 'reporte_pendientes';
       
     } else if (mode === 'telework') {
@@ -2467,7 +2499,8 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
     const allTasks = tasks.map(t => ({
       id: t.id, typeId: t.typeId, activityTypeName: t.activityTypeName || '', subtipo: t.subtipo || '',
       start: t.start, end: t.end, status: t.status || 'pending', observations: t.observations || '',
-      fieldData: t.fieldData || {}, logistics: t.logistics || {}, sessions: t.sessions || []
+      fieldData: t.fieldData || {}, logistics: t.logistics || {}, sessions: t.sessions || [],
+      caseExternalRefText: t.caseExternalRefText || null, caseUid: t.caseUid || null
     }));
     const embeddedData = {
       tasks: allTasks,
@@ -3288,6 +3321,7 @@ function selectDay(iso){
       if(t.fieldData?.lugar)html+='<div class="act-field"><span>Ubicación:</span> '+t.fieldData.lugar+'</div>';
       if(t.fieldData?.tema)html+='<div class="act-field"><span>Tema:</span> '+t.fieldData.tema+'</div>';
       if(t.fieldData?.boleta)html+='<div class="act-field"><span>Boleta:</span> '+t.fieldData.boleta+'</div>';
+      if(t.caseExternalRefText)html+='<div class="act-field"><span>Ref. expediente:</span> '+t.caseExternalRefText+'</div>';
       if(t.observations)html+='<div class="act-field"><span>Observaciones:</span> '+t.observations+'</div>';
       if(t.logistics?.codigoPP)html+='<div class="act-field"><span>Código PP:</span> '+t.logistics.codigoPP+'</div>';
       if(t.logistics?.viaticos&&t.logistics.viaticos.length>0)html+='<div class="act-field"><span>Viáticos:</span> '+t.logistics.viaticos.join(', ')+'</div>';
@@ -3316,7 +3350,8 @@ function doSearch(query){
     const obs=(t.observations||'').toLowerCase();
     const lugar=(t.fieldData?.lugar||'').toLowerCase();
     const asis=(t.fieldData?.asistentes||'').toLowerCase();
-    return exp.includes(q)||inf.includes(q)||name.includes(q)||sub.includes(q)||tema.includes(q)||obs.includes(q)||lugar.includes(q)||asis.includes(q);
+    const caseRef=(t.caseExternalRefText||'').toLowerCase();
+    return exp.includes(q)||inf.includes(q)||name.includes(q)||sub.includes(q)||tema.includes(q)||obs.includes(q)||lugar.includes(q)||asis.includes(q)||caseRef.includes(q);
   }).sort((a,b)=>new Date(a.start)-new Date(b.start));
 
   if(found.length===0){
@@ -4671,6 +4706,8 @@ const App = () => {
   const [cases, setCases] = useState([]);
   const [caseLinks, setCaseLinks] = useState([]);
   const [isCasesModalOpen, setIsCasesModalOpen] = useState(false);
+  const [batches, setBatches] = useState([]);
+  const [isBatchesModalOpen, setIsBatchesModalOpen] = useState(false);
   const [markers] = useState([...PAYMENTS_2026, ...HOLIDAYS_CR_2026, ...EFEMERIDES_2026, ...MOON_PHASES_2026]);
   const [user, setUser] = useState(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -4816,6 +4853,12 @@ const App = () => {
     const caseLinksQuery = query(collection(db, 'users', user.uid, 'case_links'));
     onSnapshot(caseLinksQuery, (snapshot) => {
       setCaseLinks(snapshot.docs.map(d => ({ ...d.data(), id: d.id })));
+    });
+
+    // --- BATCHES (lotes): Listener ---
+    const batchesQuery = query(collection(db, 'users', user.uid, 'batches'));
+    onSnapshot(batchesQuery, (snapshot) => {
+      setBatches(snapshot.docs.map(d => ({ ...d.data(), id: d.id })));
     });
 
     // --- PAPELERA: Listener de tareas eliminadas ---
@@ -5025,6 +5068,35 @@ const App = () => {
       markSaved();
     } catch (e) {
       console.error("Error deleting case link", e);
+      markSyncError();
+    }
+  };
+
+  // --- BATCHES (lotes): CRUD ---
+  const saveBatchToDB = async (batchData) => {
+    if (!user) return;
+    markSaving();
+    const db = getFirestore();
+    const batchUid = batchData.batchUid;
+    const { id, ...data } = batchData;
+    try {
+      await setDoc(doc(db, 'users', user.uid, 'batches', batchUid), data, { merge: true });
+      markSaved();
+    } catch (e) {
+      console.error("Error saving batch", e);
+      markSyncError();
+    }
+  };
+
+  const deleteBatchFromDB = async (batchUid) => {
+    if (!user) return;
+    markSaving();
+    const db = getFirestore();
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'batches', batchUid));
+      markSaved();
+    } catch (e) {
+      console.error("Error deleting batch", e);
       markSyncError();
     }
   };
@@ -5539,6 +5611,7 @@ const App = () => {
 
             <button className="hide-on-mobile" onClick={() => setShowWeekends(!showWeekends)} style={{padding:'6px',borderRadius:'6px',cursor:'pointer',border:`1px solid ${showWeekends?colors.success:colors.border}`,backgroundColor:colors.bgTertiary,color:showWeekends?colors.success:colors.textMuted}} title="Fines de Semana"><EyeOff size={16}/></button>
             <button onClick={() => setIsCasesModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.accent,borderRadius:'6px',position:'relative'}} title="Casos / Expedientes"><Briefcase size={18}/>{cases.length > 0 && <span style={{position:'absolute',top:'-2px',right:'-4px',backgroundColor:colors.accent,color:colors.bgPrimary,fontSize:'8px',fontWeight:'bold',borderRadius:'50%',minWidth:'14px',height:'14px',display:'flex',alignItems:'center',justifyContent:'center',padding:'0 2px'}}>{cases.length}</span>}</button>
+            <button onClick={() => setIsBatchesModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px',position:'relative'}} title="Lotes">{<Layers size={18}/>}{batches.length > 0 && <span style={{position:'absolute',top:'-2px',right:'-4px',backgroundColor:colors.textMuted,color:colors.bgPrimary,fontSize:'8px',fontWeight:'bold',borderRadius:'50%',minWidth:'14px',height:'14px',display:'flex',alignItems:'center',justifyContent:'center',padding:'0 2px'}}>{batches.length}</span>}</button>
             <button onClick={() => setIsReportsModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px'}} title="Reportes"><FileText size={18}/></button>
             <button onClick={() => setIsDarkMode(!isDarkMode)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px'}} title={isDarkMode ? "Modo Claro" : "Modo Oscuro"}>{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
             <button onClick={() => { setSelectedDay(new Date()); setEditingTask(null); setIsTaskModalOpen(true); }} style={{padding:'8px 14px',backgroundColor:colors.success,color:colors.bgPrimary,borderRadius:'6px',border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px',fontWeight:'bold',fontSize:'13px', whiteSpace: 'nowrap'}}><Plus size={16}/>{isMobile ? '' : ' Nueva'}</button>
@@ -5780,9 +5853,10 @@ const App = () => {
          </main>
       </div>
 
-      <TaskFormModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} task={editingTask} day={selectedDay} onSave={handleSaveTask} onDelete={handleDeleteTask} onDuplicate={handleDuplicateTask} tasks={tasks} colors={colors} activityTypes={activityTypes} ppCodes={ppCodes} viaticumRates={viaticumRates} currentMonthBudget={getBudgetStatus(editingTask || { start: selectedDay })} lodgingRates={lodgingRates} sortedActivityTypes={getSortedActivityTypes} getSortedSubtypes={getSortedSubtypes} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={forceSyncTask} cases={cases} />
+      <TaskFormModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} task={editingTask} day={selectedDay} onSave={handleSaveTask} onDelete={handleDeleteTask} onDuplicate={handleDuplicateTask} tasks={tasks} colors={colors} activityTypes={activityTypes} ppCodes={ppCodes} viaticumRates={viaticumRates} currentMonthBudget={getBudgetStatus(editingTask || { start: selectedDay })} lodgingRates={lodgingRates} sortedActivityTypes={getSortedActivityTypes} getSortedSubtypes={getSortedSubtypes} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={forceSyncTask} cases={cases} batches={batches} />
       <ReportsModal isOpen={isReportsModalOpen} onClose={() => setIsReportsModalOpen(false)} tasks={tasks} markers={markers} dayOverrides={dayOverrides} colors={colors} onImportBackup={handleImportBackup} activityTypes={activityTypes} viaticumRates={viaticumRates} trashTasks={trashTasks} onExportBackup={exportBackup} onImportBackupJSON={importBackup} onUploadBackupToStorage={uploadBackupToStorage} onListStorageBackups={listStorageBackups} onRestoreFromStorage={restoreFromStorageBackup}/>
       <CasesModal isOpen={isCasesModalOpen} onClose={() => setIsCasesModalOpen(false)} cases={cases} onSaveCase={saveCaseToDB} onDeleteCase={deleteCaseFromDB} caseLinks={caseLinks} onSaveCaseLink={saveCaseLinkToDB} onDeleteCaseLink={deleteCaseLinkFromDB} colors={colors} holidays={holidayDates} tasks={tasks} Modal={Modal} />
+      <BatchesModal isOpen={isBatchesModalOpen} onClose={() => setIsBatchesModalOpen(false)} batches={batches} cases={cases} tasks={tasks} onSaveBatch={saveBatchToDB} onDeleteBatch={deleteBatchFromDB} colors={colors} Modal={Modal} />
       <ConfigModal isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} colors={colors} activityTypes={activityTypes} setActivityTypes={setActivityTypes} ppCodes={ppCodes} setPpCodes={setPpCodes} viaticumRates={viaticumRates} setViaticumRates={setViaticumRates} tasks={tasks} onUpdateTasks={batchUpdateTasks} monthlyBudgets={monthlyBudgets} setMonthlyBudgets={setMonthlyBudgets} isBudgetLocked={isBudgetLocked} setIsBudgetLocked={setIsBudgetLocked} lodgingRates={lodgingRates} setLodgingRates={setLodgingRates} isViaticosLocked={isViaticosLocked} setIsViaticosLocked={setIsViaticosLocked} isTypesLocked={isTypesLocked} setIsTypesLocked={setIsTypesLocked} isPPLocked={isPPLocked} setIsPPLocked={setIsPPLocked} />
       <ScheduleAlert task={scheduleAlert} onAction={handleScheduleAction} onClose={() => setScheduleAlert(null)} colors={colors} activityTypes={activityTypes}/>
       <DayModalityModal isOpen={isModalityModalOpen} onClose={() => setIsModalityModalOpen(false)} selectedDay={selectedDay} currentModality={getDayModality(toISODateString(selectedDay))} onSave={(mod) => saveDayOverrideToDB(toISODateString(selectedDay), mod)} colors={colors}/>
