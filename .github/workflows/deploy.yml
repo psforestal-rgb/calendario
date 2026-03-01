@@ -31,6 +31,16 @@ jobs:
 
       - run: npm run build
 
+      - name: Verify dist output
+        run: |
+          ls -la dist/
+          test -f dist/index.html
+          if grep -q 'src/main.jsx' dist/index.html; then
+            echo 'ERROR: dist/index.html still references src/main.jsx'
+            exit 1
+          fi
+          grep -q 'assets/index-' dist/index.html
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
