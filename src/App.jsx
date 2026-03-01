@@ -6,7 +6,7 @@ import {
   Sun, Star, Repeat, GripVertical, Search, Car, CreditCard, Database, EyeOff,
   Moon, Wifi, WifiOff, Upload, Download, ArrowRightCircle, Save, CalendarPlus,
   DollarSign, Lock, Unlock, TrendingUp, AlertCircle, PieChart, BarChart3, MapPin,
-  User, Phone, Map, ExternalLink, Copy, RefreshCw, CheckCheck
+  User, Phone, Map, ExternalLink, Copy, RefreshCw, CheckCheck, Briefcase
 } from 'lucide-react';
 
 import XLSX from 'xlsx-js-style';
@@ -16,6 +16,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, query, writeBatch, where, getDocs, getFirestore } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
+import { CasesModal, CaseLinkSection } from './CasesManager.jsx';
 
 // --- DATA SEMILLA (CONSTANTES) ---
 const APP_VERSION = '2026.03.01.1';
@@ -1145,7 +1146,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, colors, rende
   );
 };
 
-const TaskFormModal = ({ isOpen, onClose, task, day, onSave, onDelete, onDuplicate, tasks, colors, activityTypes, ppCodes, viaticumRates, currentMonthBudget, lodgingRates, sortedActivityTypes, getSortedSubtypes, taskSyncMap, lastBackupAt, onForceSync }) => {
+const TaskFormModal = ({ isOpen, onClose, task, day, onSave, onDelete, onDuplicate, tasks, colors, activityTypes, ppCodes, viaticumRates, currentMonthBudget, lodgingRates, sortedActivityTypes, getSortedSubtypes, taskSyncMap, lastBackupAt, onForceSync, cases }) => {
    if (!isOpen) return null;
    const isNew = !task;
    const taskStatus = task?.status || 'pending';
@@ -1823,6 +1824,9 @@ const TaskFormModal = ({ isOpen, onClose, task, day, onSave, onDelete, onDuplica
                  </div>
               </div>
             )}
+
+            {/* Sección Caso / Expediente (opcional) */}
+            {cases && <CaseLinkSection form={form} setForm={setForm} cases={cases} colors={colors} />}
 
             <div>
                <label style={labelStyle}>Observaciones</label>
@@ -4664,6 +4668,8 @@ const App = () => {
   const [tasks, setTasks] = useState([]);
   const [trashTasks, setTrashTasks] = useState([]);
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
+  const [cases, setCases] = useState([]);
+  const [isCasesModalOpen, setIsCasesModalOpen] = useState(false);
   const [markers] = useState([...PAYMENTS_2026, ...HOLIDAYS_CR_2026, ...EFEMERIDES_2026, ...MOON_PHASES_2026]);
   const [user, setUser] = useState(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -4797,6 +4803,12 @@ const App = () => {
         });
         return next;
       });
+    });
+
+    // --- CASOS / EXPEDIENTES: Listener ---
+    const casesQuery = query(collection(db, 'users', user.uid, 'cases'));
+    onSnapshot(casesQuery, (snapshot) => {
+      setCases(snapshot.docs.map(d => ({ ...d.data(), id: d.id })));
     });
 
     // --- PAPELERA: Listener de tareas eliminadas ---
@@ -4952,6 +4964,38 @@ const App = () => {
       await batch.commit();
   };
   
+  // --- CASOS / EXPEDIENTES: CRUD ---
+  const saveCaseToDB = async (caseData) => {
+    if (!user) return;
+    markSaving();
+    const db = getFirestore();
+    const caseUid = caseData.caseUid;
+    const { id, ...data } = caseData;
+    try {
+      await setDoc(doc(db, 'users', user.uid, 'cases', caseUid), data, { merge: true });
+      markSaved();
+    } catch (e) {
+      console.error("Error saving case", e);
+      markSyncError();
+    }
+  };
+
+  const deleteCaseFromDB = async (caseUid) => {
+    if (!user) return;
+    markSaving();
+    const db = getFirestore();
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'cases', caseUid));
+      markSaved();
+    } catch (e) {
+      console.error("Error deleting case", e);
+      markSyncError();
+    }
+  };
+
+  // Feriados como array plano de strings YYYY-MM-DD (para el motor de plazos)
+  const holidayDates = useMemo(() => HOLIDAYS_CR_2026.map(h => h.date), []);
+
   const batchUpdateTasks = async (oldTypeId, newTypeId) => {
      if(!user) return;
      const db = getFirestore();
@@ -5458,6 +5502,7 @@ const App = () => {
             </button>
 
             <button className="hide-on-mobile" onClick={() => setShowWeekends(!showWeekends)} style={{padding:'6px',borderRadius:'6px',cursor:'pointer',border:`1px solid ${showWeekends?colors.success:colors.border}`,backgroundColor:colors.bgTertiary,color:showWeekends?colors.success:colors.textMuted}} title="Fines de Semana"><EyeOff size={16}/></button>
+            <button onClick={() => setIsCasesModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.accent,borderRadius:'6px',position:'relative'}} title="Casos / Expedientes"><Briefcase size={18}/>{cases.length > 0 && <span style={{position:'absolute',top:'-2px',right:'-4px',backgroundColor:colors.accent,color:colors.bgPrimary,fontSize:'8px',fontWeight:'bold',borderRadius:'50%',minWidth:'14px',height:'14px',display:'flex',alignItems:'center',justifyContent:'center',padding:'0 2px'}}>{cases.length}</span>}</button>
             <button onClick={() => setIsReportsModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px'}} title="Reportes"><FileText size={18}/></button>
             <button onClick={() => setIsDarkMode(!isDarkMode)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px'}} title={isDarkMode ? "Modo Claro" : "Modo Oscuro"}>{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
             <button onClick={() => { setSelectedDay(new Date()); setEditingTask(null); setIsTaskModalOpen(true); }} style={{padding:'8px 14px',backgroundColor:colors.success,color:colors.bgPrimary,borderRadius:'6px',border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px',fontWeight:'bold',fontSize:'13px', whiteSpace: 'nowrap'}}><Plus size={16}/>{isMobile ? '' : ' Nueva'}</button>
@@ -5699,8 +5744,9 @@ const App = () => {
          </main>
       </div>
 
-      <TaskFormModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} task={editingTask} day={selectedDay} onSave={handleSaveTask} onDelete={handleDeleteTask} onDuplicate={handleDuplicateTask} tasks={tasks} colors={colors} activityTypes={activityTypes} ppCodes={ppCodes} viaticumRates={viaticumRates} currentMonthBudget={getBudgetStatus(editingTask || { start: selectedDay })} lodgingRates={lodgingRates} sortedActivityTypes={getSortedActivityTypes} getSortedSubtypes={getSortedSubtypes} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={forceSyncTask} />
+      <TaskFormModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} task={editingTask} day={selectedDay} onSave={handleSaveTask} onDelete={handleDeleteTask} onDuplicate={handleDuplicateTask} tasks={tasks} colors={colors} activityTypes={activityTypes} ppCodes={ppCodes} viaticumRates={viaticumRates} currentMonthBudget={getBudgetStatus(editingTask || { start: selectedDay })} lodgingRates={lodgingRates} sortedActivityTypes={getSortedActivityTypes} getSortedSubtypes={getSortedSubtypes} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={forceSyncTask} cases={cases} />
       <ReportsModal isOpen={isReportsModalOpen} onClose={() => setIsReportsModalOpen(false)} tasks={tasks} markers={markers} dayOverrides={dayOverrides} colors={colors} onImportBackup={handleImportBackup} activityTypes={activityTypes} viaticumRates={viaticumRates} trashTasks={trashTasks} onExportBackup={exportBackup} onImportBackupJSON={importBackup} onUploadBackupToStorage={uploadBackupToStorage} onListStorageBackups={listStorageBackups} onRestoreFromStorage={restoreFromStorageBackup}/>
+      <CasesModal isOpen={isCasesModalOpen} onClose={() => setIsCasesModalOpen(false)} cases={cases} onSaveCase={saveCaseToDB} onDeleteCase={deleteCaseFromDB} colors={colors} holidays={holidayDates} tasks={tasks} Modal={Modal} />
       <ConfigModal isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} colors={colors} activityTypes={activityTypes} setActivityTypes={setActivityTypes} ppCodes={ppCodes} setPpCodes={setPpCodes} viaticumRates={viaticumRates} setViaticumRates={setViaticumRates} tasks={tasks} onUpdateTasks={batchUpdateTasks} monthlyBudgets={monthlyBudgets} setMonthlyBudgets={setMonthlyBudgets} isBudgetLocked={isBudgetLocked} setIsBudgetLocked={setIsBudgetLocked} lodgingRates={lodgingRates} setLodgingRates={setLodgingRates} isViaticosLocked={isViaticosLocked} setIsViaticosLocked={setIsViaticosLocked} isTypesLocked={isTypesLocked} setIsTypesLocked={setIsTypesLocked} isPPLocked={isPPLocked} setIsPPLocked={setIsPPLocked} />
       <ScheduleAlert task={scheduleAlert} onAction={handleScheduleAction} onClose={() => setScheduleAlert(null)} colors={colors} activityTypes={activityTypes}/>
       <DayModalityModal isOpen={isModalityModalOpen} onClose={() => setIsModalityModalOpen(false)} selectedDay={selectedDay} currentModality={getDayModality(toISODateString(selectedDay))} onSave={(mod) => saveDayOverrideToDB(toISODateString(selectedDay), mod)} colors={colors}/>
