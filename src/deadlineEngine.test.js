@@ -625,6 +625,354 @@ describe('computeDeadline', () => {
 });
 
 // ============================================================
+// FASE 1B — ESCENARIOS REQUERIDOS
+// Los 6 escenarios específicos pedidos en la Fase 1B,
+// cada uno como test end-to-end de computeDeadline.
+// ============================================================
+
+describe('Fase 1B — Escenarios requeridos', () => {
+
+  // ---- Escenario 1: 3 días hábiles cruzando fin de semana ----
+  describe('1. Tres días hábiles cruzando fin de semana', () => {
+    it('notificación el jueves: 3d cruza sáb-dom', () => {
+      // Base: Jue 08 ene → Start: Vie 09
+      // Vie 09 (1) → [Sáb 10, Dom 11] → Lun 12 (2) → Mar 13 (3)
+      // Max: Mar 13 ene
+      const result = computeDeadline({
+        baseDate: new Date(2026, 0, 8),
+        presetId: '3d',
+        now: new Date(2026, 0, 9),
+        holidays: []
+      });
+      expect(toISODate(result.computedStartDate)).toBe('2026-01-09');
+      expect(toISODate(result.computedMaxDueDate)).toBe('2026-01-13');
+    });
+
+    it('notificación el viernes: start es lunes, 3d hábiles = miércoles', () => {
+      // Base: Vie 09 ene → next_day = Sáb 10 (inhábil) → avanza a Lun 12
+      // Lun 12 (1) → Mar 13 (2) → Mié 14 (3)
+      // Max: Mié 14
+      const result = computeDeadline({
+        baseDate: new Date(2026, 0, 9),
+        presetId: '3d',
+        now: new Date(2026, 0, 12),
+        holidays: []
+      });
+      expect(toISODate(result.computedStartDate)).toBe('2026-01-12');
+      expect(toISODate(result.computedMaxDueDate)).toBe('2026-01-14');
+    });
+
+    it('notificación el sábado: start es lunes, 3d hábiles = miércoles', () => {
+      // Base: Sáb 10 → next_day = Dom 11 (inhábil) → Lun 12
+      // Lun 12 (1) → Mar 13 (2) → Mié 14 (3)
+      const result = computeDeadline({
+        baseDate: new Date(2026, 0, 10),
+        presetId: '3d',
+        now: new Date(2026, 0, 12),
+        holidays: []
+      });
+      expect(toISODate(result.computedStartDate)).toBe('2026-01-12');
+      expect(toISODate(result.computedMaxDueDate)).toBe('2026-01-14');
+    });
+  });
+
+  // ---- Escenario 2: 5 días hábiles con feriado en medio ----
+  describe('2. Cinco días hábiles con feriado en medio', () => {
+    it('feriado Día del Trabajador (viernes 1 mayo) en medio del conteo', () => {
+      // Base: Lun 27 abr → Start: Mar 28
+      // Mar 28 (1) → Mié 29 (2) → Jue 30 (3) → [Vie 1 may = feriado] → [Sáb 2, Dom 3] → Lun 4 (4) → Mar 5 (5)
+      // Max: Mar 5 may
+      const result = computeDeadline({
+        baseDate: new Date(2026, 3, 27),
+        presetId: '5d',
+        now: new Date(2026, 3, 28),
+        holidays: HOLIDAYS_2026
+      });
+      expect(toISODate(result.computedStartDate)).toBe('2026-04-28');
+      expect(toISODate(result.computedMaxDueDate)).toBe('2026-05-05');
+    });
+
+    it('feriado Independencia (martes 15 sep) en medio del conteo', () => {
+      // Base: Jue 10 sep → Start: Vie 11
+      // Vie 11 (1) → [Sáb 12, Dom 13] → Lun 14 (2) → [Mar 15 = feriado] → Mié 16 (3) → Jue 17 (4) → Vie 18 (5)
+      // Max: Vie 18 sep
+      const result = computeDeadline({
+        baseDate: new Date(2026, 8, 10),
+        presetId: '5d',
+        now: new Date(2026, 8, 11),
+        holidays: HOLIDAYS_2026
+      });
+      expect(toISODate(result.computedStartDate)).toBe('2026-09-11');
+      expect(toISODate(result.computedMaxDueDate)).toBe('2026-09-18');
+    });
+
+    it('feriado Abolición del Ejército (martes 1 dic) en medio del conteo', () => {
+      // 2026-12-01 es martes (feriado: Abolición del Ejército)
+      // Base: Mié 25 nov → Start: Jue 26 nov
+      // Jue 26 (1) → Vie 27 (2) → [Sáb 28, Dom 29] → Lun 30 (3) → [Mar 1 dic = feriado] → Mié 2 (4) → Jue 3 (5)
+      // Max: Jue 3 dic
+      const result = computeDeadline({
+        baseDate: new Date(2026, 10, 25),
+        presetId: '5d',
+        now: new Date(2026, 10, 26),
+        holidays: HOLIDAYS_2026
+      });
+      expect(toISODate(result.computedStartDate)).toBe('2026-11-26');
+      expect(toISODate(result.computedMaxDueDate)).toBe('2026-12-03');
+    });
+  });
+
+  // ---- Escenario 3: 24 horas con startRule next_day ----
+  describe('3. Veinticuatro horas con startRule next_day', () => {
+    it('notificación a las 14:30 → start a medianoche siguiente → max 24h después', () => {
+      // Base: Mié 07 ene 14:30 → Start: Jue 08 00:00 → Max: Vie 09 00:00
+      // Buffer 2h: Target = Jue 08 22:00
+      const result = computeDeadline({
+        baseDate: new Date(2026, 0, 7, 14, 30),
+        presetId: '24h',
+        now: new Date(2026, 0, 8, 10, 0),
+        holidays: []
+      });
+      expect(toISODate(result.computedStartDate)).toBe('2026-01-08');
+      expect(result.computedStartDate.getHours()).toBe(0);
+      expect(toISODate(result.computedMaxDueDate)).toBe('2026-01-09');
+      expect(result.computedMaxDueDate.getHours()).toBe(0);
+      expect(result.computedTargetDueDate.getHours()).toBe(22);
+      expect(toISODate(result.computedTargetDueDate)).toBe('2026-01-08');
+      expect(result.risk).toBe('verde');
+    });
+
+    it('notificación a las 23:59 → start a medianoche siguiente', () => {
+      // Base: Mar 06 23:59 → Start: Mié 07 00:00 → Max: Jue 08 00:00
+      const result = computeDeadline({
+        baseDate: new Date(2026, 0, 6, 23, 59),
+        presetId: '24h',
+        now: new Date(2026, 0, 7, 0, 0),
+        holidays: []
+      });
+      expect(toISODate(result.computedStartDate)).toBe('2026-01-07');
+      expect(result.computedStartDate.getHours()).toBe(0);
+      expect(toISODate(result.computedMaxDueDate)).toBe('2026-01-08');
+    });
+
+    it('24h en fin de semana: el plazo corre (es tiempo natural)', () => {
+      // Base: Vie 09 → Start: Sáb 10 00:00 → Max: Dom 11 00:00
+      // Las horas son naturales, no se saltan fines de semana
+      const result = computeDeadline({
+        baseDate: new Date(2026, 0, 9),
+        presetId: '24h',
+        now: new Date(2026, 0, 10, 12, 0),
+        holidays: []
+      });
+      expect(toISODate(result.computedStartDate)).toBe('2026-01-10'); // Sábado
+      expect(toISODate(result.computedMaxDueDate)).toBe('2026-01-11'); // Domingo
+      expect(result.risk).toBe('verde'); // 12:00 < 22:00 target
+    });
+  });
+
+  // ---- Escenario 4: 1 mes desde fecha 31 ----
+  describe('4. Un mes desde fecha 31 (último día del mes destino)', () => {
+    it('31 enero → 28 febrero (2026 no es bisiesto)', () => {
+      // Base: Jue 30 ene → Start: Vie 31 ene → Max: 28 feb
+      const result = computeDeadline({
+        baseDate: new Date(2026, 0, 30),
+        presetId: '1m',
+        now: new Date(2026, 0, 31),
+        holidays: []
+      });
+      expect(toISODate(result.computedStartDate)).toBe('2026-01-31');
+      expect(toISODate(result.computedMaxDueDate)).toBe('2026-02-28');
+    });
+
+    it('31 marzo → 30 abril', () => {
+      // Base: Lun 30 mar → Start: Mar 31 mar → Max: 30 abr (abril tiene 30 días)
+      const result = computeDeadline({
+        baseDate: new Date(2026, 2, 30),
+        presetId: '1m',
+        now: new Date(2026, 2, 31),
+        holidays: []
+      });
+      expect(toISODate(result.computedStartDate)).toBe('2026-03-31');
+      expect(toISODate(result.computedMaxDueDate)).toBe('2026-04-30');
+    });
+
+    it('31 mayo → 30 junio', () => {
+      // Base: Sáb 30 may → Start: Dom 31 may → Max: 30 jun
+      const result = computeDeadline({
+        baseDate: new Date(2026, 4, 30),
+        presetId: '1m',
+        now: new Date(2026, 4, 31),
+        holidays: []
+      });
+      expect(toISODate(result.computedStartDate)).toBe('2026-05-31');
+      expect(toISODate(result.computedMaxDueDate)).toBe('2026-06-30');
+    });
+
+    it('31 julio → 31 agosto (ambos tienen 31 días)', () => {
+      // Base: Jue 30 jul → Start: Vie 31 jul → Max: 31 ago
+      const result = computeDeadline({
+        baseDate: new Date(2026, 6, 30),
+        presetId: '1m',
+        now: new Date(2026, 6, 31),
+        holidays: []
+      });
+      expect(toISODate(result.computedStartDate)).toBe('2026-07-31');
+      expect(toISODate(result.computedMaxDueDate)).toBe('2026-08-31');
+    });
+
+    it('30 enero + 1m = 28 febrero (día 30 no existe en feb)', () => {
+      // Base: Jue 29 ene → Start: Vie 30 ene → Max: 28 feb
+      const result = computeDeadline({
+        baseDate: new Date(2026, 0, 29),
+        presetId: '1m',
+        now: new Date(2026, 0, 30),
+        holidays: []
+      });
+      expect(toISODate(result.computedStartDate)).toBe('2026-01-30');
+      expect(toISODate(result.computedMaxDueDate)).toBe('2026-02-28');
+    });
+  });
+
+  // ---- Escenario 5: Overrides manuales ----
+  describe('5. Override manual de maxDueDateManual y targetDueDateManual', () => {
+    it('maxDueDateManual reemplaza computedMaxDueDate en effectiveMaxDueDate', () => {
+      const result = computeDeadline({
+        baseDate: new Date(2026, 0, 5),
+        presetId: '5d',
+        now: new Date(2026, 0, 6),
+        maxDueDateManual: new Date(2026, 0, 25),
+        holidays: []
+      });
+      // computedMaxDueDate sigue calculándose normalmente
+      expect(result.computedMaxDueDate).not.toBeNull();
+      expect(toISODate(result.computedMaxDueDate)).not.toBe('2026-01-25');
+      // Pero effectiveMaxDueDate usa el manual
+      expect(toISODate(result.effectiveMaxDueDate)).toBe('2026-01-25');
+    });
+
+    it('targetDueDateManual reemplaza computedTargetDueDate en effectiveTargetDueDate', () => {
+      const result = computeDeadline({
+        baseDate: new Date(2026, 0, 5),
+        presetId: '10d',
+        now: new Date(2026, 0, 6),
+        targetDueDateManual: new Date(2026, 0, 10),
+        holidays: []
+      });
+      // computedTargetDueDate sigue calculándose
+      expect(result.computedTargetDueDate).not.toBeNull();
+      // Pero effectiveTargetDueDate usa el manual
+      expect(toISODate(result.effectiveTargetDueDate)).toBe('2026-01-10');
+    });
+
+    it('ambos overrides manuales simultáneamente', () => {
+      const result = computeDeadline({
+        baseDate: new Date(2026, 0, 5),
+        presetId: '3d',
+        now: new Date(2026, 0, 6),
+        maxDueDateManual: new Date(2026, 1, 15),
+        targetDueDateManual: new Date(2026, 1, 1),
+        holidays: []
+      });
+      expect(toISODate(result.effectiveMaxDueDate)).toBe('2026-02-15');
+      expect(toISODate(result.effectiveTargetDueDate)).toBe('2026-02-01');
+      // El riesgo se calcula con las fechas efectivas (manuales)
+      expect(result.risk).toBe('verde'); // now (6 ene) < target (1 feb)
+    });
+
+    it('manual afecta el cálculo de riesgo', () => {
+      // Sin manual: 3d hábiles desde lun 5 → max jue 8 → now jue 8 = rojo
+      const sinManual = computeDeadline({
+        baseDate: new Date(2026, 0, 5),
+        presetId: '3d',
+        now: new Date(2026, 0, 8),
+        holidays: []
+      });
+      expect(sinManual.risk).toBe('rojo');
+
+      // Con manual: max extendido a 20 ene → now jue 8 = verde
+      const conManual = computeDeadline({
+        baseDate: new Date(2026, 0, 5),
+        presetId: '3d',
+        now: new Date(2026, 0, 8),
+        maxDueDateManual: new Date(2026, 0, 20),
+        targetDueDateManual: new Date(2026, 0, 15),
+        holidays: []
+      });
+      expect(conManual.risk).toBe('verde');
+    });
+  });
+
+  // ---- Escenario 6: Semáforo verde → amarillo → rojo ----
+  describe('6. Riesgo verde / amarillo / rojo (progresión temporal)', () => {
+    // Plazo de 10 días hábiles: start Mar 06 → max Lun 19 ene
+    // Buffer 7 días naturales → target: Dom 12 ene (clamped a start Mar 06? no, 12 > 06)
+    // Target: Lun 12 ene
+    const baseConfig = {
+      baseDate: new Date(2026, 0, 5), // Lunes
+      presetId: '10d',
+      holidays: [],
+    };
+
+    it('verde: bien dentro del plazo', () => {
+      const result = computeDeadline({ ...baseConfig, now: new Date(2026, 0, 8) });
+      expect(result.risk).toBe('verde');
+    });
+
+    it('verde: justo antes del target', () => {
+      const result = computeDeadline({ ...baseConfig, now: new Date(2026, 0, 11, 23, 59) });
+      expect(result.risk).toBe('verde');
+    });
+
+    it('amarillo: justo en el target', () => {
+      const result = computeDeadline({ ...baseConfig, now: new Date(2026, 0, 12, 0, 0) });
+      expect(result.risk).toBe('amarillo');
+    });
+
+    it('amarillo: entre target y max', () => {
+      const result = computeDeadline({ ...baseConfig, now: new Date(2026, 0, 15) });
+      expect(result.risk).toBe('amarillo');
+    });
+
+    it('rojo: justo en el vencimiento', () => {
+      const result = computeDeadline({ ...baseConfig, now: new Date(2026, 0, 19, 0, 0) });
+      expect(result.risk).toBe('rojo');
+    });
+
+    it('rojo: después del vencimiento', () => {
+      const result = computeDeadline({ ...baseConfig, now: new Date(2026, 0, 25) });
+      expect(result.risk).toBe('rojo');
+    });
+
+    it('sin_fecha: sin baseDate', () => {
+      const result = computeDeadline({ presetId: '10d', now: new Date(2026, 0, 8) });
+      expect(result.risk).toBe('sin_fecha');
+    });
+
+    it('zona crítica (1m): rojo antes del max si ≤3 días', () => {
+      // 1m desde 15 ene → max 16 feb. now = 14 feb (2 días antes) → rojo
+      const result = computeDeadline({
+        baseDate: new Date(2026, 0, 15),
+        presetId: '1m',
+        now: new Date(2026, 1, 14),
+        holidays: []
+      });
+      expect(result.risk).toBe('rojo');
+    });
+
+    it('zona crítica (1m): amarillo si >3 días y pasó target', () => {
+      // 1m desde 15 ene → max 16 feb, target 1 feb. now = 10 feb (6 días antes, pasó target) → amarillo
+      const result = computeDeadline({
+        baseDate: new Date(2026, 0, 15),
+        presetId: '1m',
+        now: new Date(2026, 1, 10),
+        holidays: []
+      });
+      expect(result.risk).toBe('amarillo');
+    });
+  });
+});
+
+// ============================================================
 // SCHEMAS
 // ============================================================
 
