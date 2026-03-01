@@ -4854,30 +4854,24 @@ const App = () => {
     });
 
     // --- CASOS / EXPEDIENTES: Listener ---
+    // Deep sanitizer: convert ALL Firestore Timestamps to ISO strings recursively
+    const sanitizeFirestore = (obj) => {
+      if (!obj || typeof obj !== 'object') return obj;
+      if (typeof obj.toDate === 'function') return obj.toDate().toISOString();
+      if (Array.isArray(obj)) return obj.map(sanitizeFirestore);
+      const out = {};
+      for (const k of Object.keys(obj)) out[k] = sanitizeFirestore(obj[k]);
+      return out;
+    };
     const casesQuery = query(collection(db, 'users', user.uid, 'cases'));
     const unsubscribeCases = onSnapshot(casesQuery, (snapshot) => {
-      setCases(snapshot.docs.map(d => {
-        const raw = d.data();
-        // Sanitize Firestore Timestamps to ISO strings
-        const sanitize = (val) => val && typeof val === 'object' && typeof val.toDate === 'function' ? val.toDate().toISOString() : val;
-        if (raw.createdAt) raw.createdAt = sanitize(raw.createdAt);
-        if (raw.updatedAt) raw.updatedAt = sanitize(raw.updatedAt);
-        if (raw.computed) {
-          if (raw.computed.effectiveMaxDueDate) raw.computed.effectiveMaxDueDate = sanitize(raw.computed.effectiveMaxDueDate);
-          if (raw.computed.effectiveTargetDueDate) raw.computed.effectiveTargetDueDate = sanitize(raw.computed.effectiveTargetDueDate);
-        }
-        return { ...raw, id: d.id };
-      }));
+      setCases(snapshot.docs.map(d => ({ ...sanitizeFirestore(d.data()), id: d.id })));
     });
 
     // --- CASE LINKS (relaciones entre casos): Listener ---
     const caseLinksQuery = query(collection(db, 'users', user.uid, 'case_links'));
     const unsubscribeCaseLinks = onSnapshot(caseLinksQuery, (snapshot) => {
-      setCaseLinks(snapshot.docs.map(d => {
-        const raw = d.data();
-        if (raw.createdAt && typeof raw.createdAt === 'object' && typeof raw.createdAt.toDate === 'function') raw.createdAt = raw.createdAt.toDate().toISOString();
-        return { ...raw, id: d.id };
-      }));
+      setCaseLinks(snapshot.docs.map(d => ({ ...sanitizeFirestore(d.data()), id: d.id })));
     });
 
     // --- BATCHES (lotes): Listener ---
