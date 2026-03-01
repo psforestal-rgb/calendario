@@ -5480,6 +5480,7 @@ const App = () => {
             finalTask.sessions = [...(finalTask.sessions || []), {start: now.toISOString(), end: null}];
         }
         if (finalTask.status === 'paused' && oldTask?.status === 'in_progress') { const now = new Date(); const sessions = [...(finalTask.sessions || [])]; if (sessions.length > 0 && !sessions[sessions.length-1].end) sessions[sessions.length-1].end = now.toISOString(); finalTask.sessions = sessions; }
+        if (finalTask.status === 'completed' && oldTask?.status === 'in_progress') { const now = new Date(); const sessions = [...(finalTask.sessions || [])]; if (sessions.length > 0 && !sessions[sessions.length-1].end) sessions[sessions.length-1].end = now.toISOString(); finalTask.sessions = sessions; }
         saveTaskToDB({ ...finalTask, rescheduleCount });
         if (finalTask.status === 'completed' && resumeTaskId) { setPausedByNewTask(resumeTaskId); setTimeout(() => setShowResumePrompt(true), 500); }
     } else { allTasks.forEach(t => saveTaskToDB({ ...t, id: t.id || uuid(), status: t.status || 'pending', rescheduleCount: 0, seriesId: t.seriesId || t.id })); }
