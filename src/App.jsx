@@ -1147,8 +1147,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, colors, rende
   );
 };
 
-const TaskFormModal = ({ isOpen, onClose, task, day, onSave, onDelete, onDuplicate, tasks, colors, activityTypes, ppCodes, viaticumRates, currentMonthBudget, lodgingRates, sortedActivityTypes, getSortedSubtypes, taskSyncMap, lastBackupAt, onForceSync, cases, batches }) => {
-   if (!isOpen) return null;
+const TaskFormModalContent = ({ isOpen, onClose, task, day, onSave, onDelete, onDuplicate, tasks, colors, activityTypes, ppCodes, viaticumRates, currentMonthBudget, lodgingRates, sortedActivityTypes, getSortedSubtypes, taskSyncMap, lastBackupAt, onForceSync, cases, batches }) => {
    const isNew = !task;
    const taskStatus = task?.status || 'pending';
    
@@ -4516,6 +4515,12 @@ const SideBanner = ({ selectedDate, markers, colors }) => {
        </div>
     </div>
   );
+};
+
+
+const TaskFormModal = (props) => {
+  if (!props.isOpen) return null;
+  return <TaskFormModalContent {...props} />;
 };
 
 // --- PAPELERA DE ACTIVIDADES ---
