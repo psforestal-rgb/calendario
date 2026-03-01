@@ -620,8 +620,6 @@ const CasesModal = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLink
   // Ensure safe cases data (guard against any remaining Firestore objects)
   const safeCases = useMemo(() => (cases || []).filter(c => c && typeof c === 'object'), [cases]);
 
-  if (!isOpen) return null;
-
   // Filtrar casos por búsqueda
   const filteredCases = useMemo(() => {
     if (!searchQuery.trim()) return safeCases;
@@ -664,6 +662,8 @@ const CasesModal = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLink
   const openEdit = (c) => { setEditingCase(c); setView('form'); };
   const openNew = () => { setEditingCase(null); setView('form'); };
   const goBack = () => { setView('list'); setSelectedCase(null); setEditingCase(null); };
+
+  if (!isOpen) return null;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Casos / Expedientes" size="lg" colors={colors}>
