@@ -12,7 +12,7 @@ import {
 import XLSX from 'xlsx-js-style';
 
 // --- FIREBASE IMPORTS ---
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, query, writeBatch, where, getDocs, getFirestore } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
@@ -4810,15 +4810,25 @@ const App = () => {
       appId: "1:900985221783:web:d5b6407eb23abf9190efd2",
       measurementId: "G-KZY96XP7C7"
     };
-    const app = initializeApp(firebaseConfig);
+    const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
     const auth = getAuth(app);
     try {
       initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) }) });
     } catch (e) { /* Firestore already initialized */ }
     signInAnonymously(auth).catch(console.error);
-    onAuthStateChanged(auth, setUser);
-    window.addEventListener('online', () => setIsOffline(false));
-    window.addEventListener('offline', () => setIsOffline(true));
+    const unsubscribeAuth = onAuthStateChanged(auth, setUser);
+
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      unsubscribeAuth();
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   useEffect(() => {
@@ -4826,7 +4836,7 @@ const App = () => {
     const db = getFirestore();
 
     const tasksQuery = query(collection(db, 'users', user.uid, 'tasks'));
-    onSnapshot(tasksQuery, (snapshot) => {
+    const unsubscribeTasks = onSnapshot(tasksQuery, (snapshot) => {
       const loadedTasks = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
       setTasks(loadedTasks);
       // Marcar todas las tareas recibidas de Firebase como sincronizadas
@@ -4845,25 +4855,25 @@ const App = () => {
 
     // --- CASOS / EXPEDIENTES: Listener ---
     const casesQuery = query(collection(db, 'users', user.uid, 'cases'));
-    onSnapshot(casesQuery, (snapshot) => {
+    const unsubscribeCases = onSnapshot(casesQuery, (snapshot) => {
       setCases(snapshot.docs.map(d => ({ ...d.data(), id: d.id })));
     });
 
     // --- CASE LINKS (relaciones entre casos): Listener ---
     const caseLinksQuery = query(collection(db, 'users', user.uid, 'case_links'));
-    onSnapshot(caseLinksQuery, (snapshot) => {
+    const unsubscribeCaseLinks = onSnapshot(caseLinksQuery, (snapshot) => {
       setCaseLinks(snapshot.docs.map(d => ({ ...d.data(), id: d.id })));
     });
 
     // --- BATCHES (lotes): Listener ---
     const batchesQuery = query(collection(db, 'users', user.uid, 'batches'));
-    onSnapshot(batchesQuery, (snapshot) => {
+    const unsubscribeBatches = onSnapshot(batchesQuery, (snapshot) => {
       setBatches(snapshot.docs.map(d => ({ ...d.data(), id: d.id })));
     });
 
     // --- PAPELERA: Listener de tareas eliminadas ---
     const trashQuery = query(collection(db, 'users', user.uid, 'trash'));
-    onSnapshot(trashQuery, (snapshot) => { 
+    const unsubscribeTrash = onSnapshot(trashQuery, (snapshot) => { 
       const trashItems = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
       // Auto-limpiar tareas con más de 30 días en papelera
       const now = Date.now();
@@ -4877,7 +4887,7 @@ const App = () => {
     });
 
     const settingsRef = doc(db, 'users', user.uid, 'data', 'calendar_settings');
-    onSnapshot(settingsRef, (docSnap) => {
+    const unsubscribeSettings = onSnapshot(settingsRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
             setDayOverrides(data.overrides || {});
@@ -4903,6 +4913,15 @@ const App = () => {
             if(data.isPPLocked !== undefined) setIsPPLocked(data.isPPLocked); // Load lock state
         }
     });
+
+    return () => {
+      unsubscribeTasks();
+      unsubscribeCases();
+      unsubscribeCaseLinks();
+      unsubscribeBatches();
+      unsubscribeTrash();
+      unsubscribeSettings();
+    };
   }, [user]);
 
   // Guardar Configs cuando cambian
