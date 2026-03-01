@@ -611,7 +611,7 @@ const CaseDetail = ({ caseData, onEdit, onBack, onDelete, colors, holidays, task
 // MODAL PRINCIPAL DE CASOS
 // ============================================================
 
-const CasesModal = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLinks, onSaveCaseLink, onDeleteCaseLink, colors, holidays, tasks, Modal }) => {
+const CasesModalContent = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLinks, onSaveCaseLink, onDeleteCaseLink, colors, holidays, tasks, Modal }) => {
   const [view, setView] = useState('list'); // 'list' | 'detail' | 'form'
   const [selectedCase, setSelectedCase] = useState(null);
   const [editingCase, setEditingCase] = useState(null);
@@ -619,8 +619,6 @@ const CasesModal = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLink
 
   // Ensure safe cases data (guard against any remaining Firestore objects)
   const safeCases = useMemo(() => (cases || []).filter(c => c && typeof c === 'object'), [cases]);
-
-  if (!isOpen) return null;
 
   // Filtrar casos por búsqueda
   const filteredCases = useMemo(() => {
@@ -771,6 +769,12 @@ const CasesModal = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLink
       )}
     </Modal>
   );
+};
+
+
+const CasesModal = (props) => {
+  if (!props.isOpen) return null;
+  return <CasesModalContent {...props} />;
 };
 
 // ============================================================
