@@ -1,5 +1,5 @@
-const APP_VERSION = '2026.03.01.1';
-const CACHE_NAME = 'calendario-sinac-v6';
+const APP_VERSION = '2026.03.01.2';
+const CACHE_NAME = `calendario-sinac-${APP_VERSION}`;
 
 const ASSETS_TO_CACHE = [
   './',
@@ -22,7 +22,7 @@ function isNoCache(url) {
 }
 
 // Network fetch with timeout
-function fetchWithTimeout(request, timeout = 3000) {
+function fetchWithTimeout(request, timeout = 10000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('timeout')), timeout);
     fetch(request).then(response => {
@@ -70,8 +70,30 @@ self.addEventListener('fetch', event => {
   if (isNoCache(url)) return;
   if (!url.startsWith('http')) return;
 
-  // Hashed assets (Vite output): cache-first (immutable content)
-  if (url.includes('/assets/') && url.match(/\.[a-f0-9]{8}\./)) {
+
+  // HTML navigation: network-first (without timeout) to avoid serving stale app shells
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response && response.status === 200 && response.type === 'basic') {
+            caches.open(CACHE_NAME).then(cache => {
+              cache.put(event.request, response.clone());
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match(event.request).then(cached => {
+            return cached || caches.match('./index.html') || new Response('Offline', { status: 503, statusText: 'Offline' });
+          });
+        })
+    );
+    return;
+  }
+
+  // Bundled assets under /assets/: cache-first (fingerprinted by Vite build output)
+  if (url.includes('/assets/')) {
     event.respondWith(
       caches.open(CACHE_NAME).then(cache => {
         return cache.match(event.request).then(cached => {
@@ -88,9 +110,9 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Local assets: network-first with 3s timeout
+  // Local assets: network-first with 10s timeout
   event.respondWith(
-    fetchWithTimeout(event.request, 3000)
+    fetchWithTimeout(event.request, 10000)
       .then(response => {
         if (response && response.status === 200 && response.type === 'basic') {
           const responseToCache = response.clone();

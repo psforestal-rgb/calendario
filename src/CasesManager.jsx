@@ -663,8 +663,6 @@ const CasesModalContent = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, c
   const openNew = () => { setEditingCase(null); setView('form'); };
   const goBack = () => { setView('list'); setSelectedCase(null); setEditingCase(null); };
 
-  if (!isOpen) return null;
-
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Casos / Expedientes" size="lg" colors={colors}>
       {view === 'list' && (
