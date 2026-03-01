@@ -510,8 +510,8 @@ const CaseDetail = ({ caseData, onEdit, onBack, onDelete, colors, holidays, task
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
         <button onClick={onBack} style={{ padding: '4px', background: 'none', border: 'none', color: colors.textMuted, cursor: 'pointer' }}><ChevronLeft size={18} /></button>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '15px', fontWeight: '700', color: colors.textPrimary }}>{caseData.title || caseData.caseType}</div>
-          <div style={{ fontSize: '11px', color: colors.textMuted }}>{caseData.caseType} — {statusLabel}</div>
+          <div style={{ fontSize: '15px', fontWeight: '700', color: colors.textPrimary }}>{String(caseData.title || caseData.caseType || '')}</div>
+          <div style={{ fontSize: '11px', color: colors.textMuted }}>{String(caseData.caseType || '')} — {String(statusLabel || '')}</div>
         </div>
         {deadlineResult && <RiskBadge risk={deadlineResult.risk} colors={colors} />}
       </div>
@@ -522,8 +522,8 @@ const CaseDetail = ({ caseData, onEdit, onBack, onDelete, colors, holidays, task
           <div style={sectionTitle}>Referencias externas</div>
           {caseData.externalRefs.map((ref, i) => (
             <div key={i} style={{ ...rowStyle, color: colors.textSecondary }}>
-              <span><ExternalLink size={11} style={{ marginRight: '4px', verticalAlign: 'middle' }} />{ref.system}: {ref.value || '(vacío)'}</span>
-              <span style={{ fontSize: '10px', opacity: 0.7 }}>{ref.status}</span>
+              <span><ExternalLink size={11} style={{ marginRight: '4px', verticalAlign: 'middle' }} />{String(ref.system || '')}: {String(ref.value || '(vacío)')}</span>
+              <span style={{ fontSize: '10px', opacity: 0.7 }}>{String(ref.status || '')}</span>
             </div>
           ))}
         </div>
@@ -533,7 +533,7 @@ const CaseDetail = ({ caseData, onEdit, onBack, onDelete, colors, holidays, task
       <div style={sectionTitle}>Fechas y plazo</div>
       <div style={rowStyle}>
         <span style={{ color: colors.textMuted }}>Recepción</span>
-        <span style={{ color: colors.textPrimary }}>{fmtDate(baseDate)} {caseData.receptionConfidence !== 'confirmada' && <span style={{ fontSize: '10px', opacity: 0.6 }}>({caseData.receptionConfidence})</span>}</span>
+        <span style={{ color: colors.textPrimary }}>{fmtDate(baseDate)} {caseData.receptionConfidence !== 'confirmada' && <span style={{ fontSize: '10px', opacity: 0.6 }}>({String(caseData.receptionConfidence || '')})</span>}</span>
       </div>
       <div style={rowStyle}>
         <span style={{ color: colors.textMuted }}>Plazo</span>
@@ -611,33 +611,36 @@ const CaseDetail = ({ caseData, onEdit, onBack, onDelete, colors, holidays, task
 // MODAL PRINCIPAL DE CASOS
 // ============================================================
 
-const CasesModal = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLinks, onSaveCaseLink, onDeleteCaseLink, colors, holidays, tasks, Modal }) => {
+const CasesModalContent = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLinks, onSaveCaseLink, onDeleteCaseLink, colors, holidays, tasks, Modal }) => {
   const [view, setView] = useState('list'); // 'list' | 'detail' | 'form'
   const [selectedCase, setSelectedCase] = useState(null);
   const [editingCase, setEditingCase] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  if (!isOpen) return null;
+  // Ensure safe cases data (guard against any remaining Firestore objects)
+  const safeCases = useMemo(() => (cases || []).filter(c => c && typeof c === 'object'), [cases]);
 
   // Filtrar casos por búsqueda
   const filteredCases = useMemo(() => {
-    if (!searchQuery.trim()) return cases;
+    if (!searchQuery.trim()) return safeCases;
     const q = searchQuery.toLowerCase();
-    return cases.filter(c =>
-      c.title?.toLowerCase().includes(q) ||
-      c.caseType?.toLowerCase().includes(q) ||
-      c.externalRefs?.some(r => r.value?.toLowerCase().includes(q))
+    return safeCases.filter(c =>
+      String(c.title || '').toLowerCase().includes(q) ||
+      String(c.caseType || '').toLowerCase().includes(q) ||
+      (Array.isArray(c.externalRefs) && c.externalRefs.some(r => String(r.value || '').toLowerCase().includes(q)))
     );
-  }, [cases, searchQuery]);
+  }, [safeCases, searchQuery]);
 
   // Ordenar por riesgo (rojo primero) y fecha de actualización
   const sortedCases = useMemo(() => {
     const riskOrder = { rojo: 0, amarillo: 1, verde: 2, sin_fecha: 3 };
     return [...filteredCases].sort((a, b) => {
-      const ra = riskOrder[a.computed?.risk] ?? 3;
-      const rb = riskOrder[b.computed?.risk] ?? 3;
+      const ra = riskOrder[String(a.computed?.risk || 'sin_fecha')] ?? 3;
+      const rb = riskOrder[String(b.computed?.risk || 'sin_fecha')] ?? 3;
       if (ra !== rb) return ra - rb;
-      return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+      const dateA = typeof a.updatedAt === 'string' ? new Date(a.updatedAt) : new Date(0);
+      const dateB = typeof b.updatedAt === 'string' ? new Date(b.updatedAt) : new Date(0);
+      return dateB - dateA;
     });
   }, [filteredCases]);
 
@@ -689,12 +692,14 @@ const CasesModal = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLink
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {sortedCases.map(c => {
-                const risk = c.computed?.risk || 'sin_fecha';
-                const refText = c.externalRefs?.filter(r => r.value).map(r => `${r.system}: ${r.value}`).join(', ');
-                const statusLabel = CASE_STATUSES.find(s => s.value === c.caseStatus)?.label || c.caseStatus;
+                const risk = String(c.computed?.risk || 'sin_fecha');
+                const refText = c.externalRefs?.filter(r => r.value).map(r => `${r.system}: ${r.value}`).join(', ') || '';
+                const statusLabel = CASE_STATUSES.find(s => s.value === c.caseStatus)?.label || String(c.caseStatus || '');
+                const displayTitle = String(c.title || c.caseType || 'Sin título');
+                const displayType = String(c.caseType || '');
 
                 return (
-                  <div key={c.caseUid} onClick={() => openDetail(c)} style={{
+                  <div key={c.caseUid || c.id} onClick={() => openDetail(c)} style={{
                     padding: '10px 12px', borderRadius: '8px', border: `1px solid ${colors.border}`,
                     borderLeft: `4px solid ${(RISK_LEVELS[risk] || RISK_LEVELS.sin_fecha).color}`,
                     backgroundColor: colors.bgPrimary, cursor: 'pointer',
@@ -702,9 +707,9 @@ const CasesModal = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLink
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
-                        <div style={{ fontSize: '13px', fontWeight: '600', color: colors.textPrimary }}>{c.title || c.caseType}</div>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: colors.textPrimary }}>{displayTitle}</div>
                         <div style={{ fontSize: '11px', color: colors.textMuted, marginTop: '2px' }}>
-                          {c.caseType} — {statusLabel}
+                          {displayType} — {statusLabel}
                           {refText && <span> — {refText}</span>}
                         </div>
                       </div>
@@ -722,9 +727,9 @@ const CasesModal = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLink
           )}
 
           {/* Stats */}
-          {cases.length > 0 && (
+          {safeCases.length > 0 && (
             <div style={{ marginTop: '12px', padding: '8px', fontSize: '11px', color: colors.textMuted, textAlign: 'center' }}>
-              {cases.length} caso{cases.length !== 1 ? 's' : ''} total{cases.length !== 1 ? 'es' : ''}
+              {safeCases.length} caso{safeCases.length !== 1 ? 's' : ''} total{safeCases.length !== 1 ? 'es' : ''}
               {searchQuery && ` — ${filteredCases.length} coincidencia${filteredCases.length !== 1 ? 's' : ''}`}
             </div>
           )}
@@ -764,6 +769,12 @@ const CasesModal = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLink
       )}
     </Modal>
   );
+};
+
+
+const CasesModal = (props) => {
+  if (!props.isOpen) return null;
+  return <CasesModalContent {...props} />;
 };
 
 // ============================================================

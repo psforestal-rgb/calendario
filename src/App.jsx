@@ -76,19 +76,19 @@ const SUBTIPOS_FORESTALES = ['Permiso Pequeño', 'Inventario Forestal', 'Certifi
 const SUBTIPOS_RESOLUCION = ['Permiso Pequeño', 'Inventario Forestal', 'Certificado de Origen', 'Plan de Manejo', 'Régimen Forestal', 'Visado de Plano'];
 
 const DEFAULT_ACTIVITY_TYPES = [
-  { id: 1, name: 'Redacción de Informe', color: '#2ECC71', subtypes: [...SUBTIPOS_FORESTALES, 'SICAF - PP', 'SIFAC - IF', 'SICAF - CO', 'SICAF - Informe técnico PyG', 'SICAF - Informe analista PyG', 'Informe de patio', 'Coordinación para entrega PyG'], fields: ['informe', 'expediente'], logistics: true },
-  { id: 2, name: 'Redacción de Resolución', color: '#27AE60', subtypes: SUBTIPOS_RESOLUCION, fields: ['informe', 'expediente'] },
-  { id: 3, name: 'Inspección', color: '#E67E22', subtypes: [...SUBTIPOS_FORESTALES, 'Inventario de patio', 'Supervisión'], fields: ['informe', 'expediente', 'asistentes', 'lugar'], logistics: true },
+  { id: 1, name: 'Redacción de Informe', color: '#2ECC71', subtypes: [...SUBTIPOS_FORESTALES, 'SICAF - PP', 'SIFAC - IF', 'SICAF - CO', 'SICAF - Informe técnico PyG', 'SICAF - Informe analista PyG', 'Informe de patio', 'Coordinación para entrega PyG'], fields: ['informe'], logistics: true },
+  { id: 2, name: 'Redacción de Resolución', color: '#27AE60', subtypes: SUBTIPOS_RESOLUCION, fields: ['informe'] },
+  { id: 3, name: 'Inspección', color: '#E67E22', subtypes: [...SUBTIPOS_FORESTALES, 'Inventario de patio', 'Supervisión'], fields: ['informe', 'asistentes', 'lugar'], logistics: true },
   { id: 4, name: 'Revisión de Correos', color: '#3498DB', subtypes: [], fields: [] },
   { id: 5, name: 'Comunicaciones', color: '#9B59B6', subtypes: ['Llamada telefónica', 'Mensaje de Whatsapp'], fields: ['nombre', 'cedula', 'tema'] },
-  { id: 6, name: 'Revisión de Documentos', color: '#1ABC9C', subtypes: [], fields: ['informe', 'expediente'] },
-  { id: 7, name: 'Manejo de Expediente', color: '#16A085', subtypes: [], fields: ['informe', 'expediente'] },
+  { id: 6, name: 'Revisión de Documentos', color: '#1ABC9C', subtypes: [], fields: ['informe'] },
+  { id: 7, name: 'Manejo de Expediente', color: '#16A085', subtypes: [], fields: ['informe'] },
   { id: 8, name: 'Gestión Administrativa', color: '#F39C12', subtypes: ['Viáticos', 'Informe PP', 'Informe SEMEC', 'Programación', 'Informe labores', 'Control interno'], fields: [] },
   { id: 9, name: 'Recursos Humanos', color: '#E74C3C', subtypes: ['Boleta vacaciones', 'Evaluación desempeño', 'Otras'], fields: ['boleta'] },
-  { id: 10, name: 'Colaboración', color: '#8E44AD', subtypes: [], fields: ['informe', 'expediente', 'asistentes', 'lugar'], logistics: true },
-  { id: 11, name: 'Reunión', color: '#2980B9', subtypes: [], fields: ['tema', 'minuta', 'expediente', 'asistentes', 'lugar'], logistics: true },
+  { id: 10, name: 'Colaboración', color: '#8E44AD', subtypes: [], fields: ['informe', 'asistentes', 'lugar'], logistics: true },
+  { id: 11, name: 'Reunión', color: '#2980B9', subtypes: [], fields: ['tema', 'minuta', 'asistentes', 'lugar'], logistics: true },
   { id: 12, name: 'Capacitación', color: '#D35400', subtypes: [], fields: ['tema', 'lugar'], logistics: true },
-  { id: 13, name: 'Otro', color: '#7F8C8D', subtypes: [], fields: ['informe', 'expediente', 'asistentes'], logistics: true },
+  { id: 13, name: 'Otro', color: '#7F8C8D', subtypes: [], fields: ['informe', 'asistentes'], logistics: true },
   { id: 14, name: 'Vacaciones', color: '#00CED1', subtypes: [], fields: ['boleta'] },
   { id: 15, name: 'Licencia Ocasional', color: '#20B2AA', subtypes: [], fields: ['boleta'] },
   { id: 16, name: 'Cita Médica', color: '#FF6B6B', subtypes: ['Ebais - Medicina general','Ebais - Odontología','Retiro de medicamentos','IAFA - Medicina','IAFA - Psicología','CCSS - Psicología','CCSS - Psiquiatría','Medicina Privada','Emergencias','Vascular periférico','Otra'], fields: [] },
@@ -1038,7 +1038,7 @@ const CalendarCell = ({ day, tasks, currentDate, dayTag, markers, onToggleTag, o
                  {showBudgetWarning && <DollarSign size={10} color={colors.danger} style={{marginRight:'2px',marginTop:'2px',flexShrink:0}} />}
                  <div style={{display:'flex',flexDirection:'column',overflow:'hidden',lineHeight:'1.3',flex:1,minWidth:0}}>
                    <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ti?.name || t.activityTypeName || 'Actividad'}</span>
-                   {t.fieldData?.expediente && <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:'9px',opacity:0.7}}>{t.fieldData.expediente}</span>}
+                   {(t.fieldData?.expediente || t.caseExternalRefText) && <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:'9px',opacity:0.7}}>{t.fieldData?.expediente || t.caseExternalRefText}</span>}
                  </div>
                  <SyncIndicator taskId={t.id} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={onForceSync} colors={colors} size={10}/>
               </div>
@@ -1147,8 +1147,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, colors, rende
   );
 };
 
-const TaskFormModal = ({ isOpen, onClose, task, day, onSave, onDelete, onDuplicate, tasks, colors, activityTypes, ppCodes, viaticumRates, currentMonthBudget, lodgingRates, sortedActivityTypes, getSortedSubtypes, taskSyncMap, lastBackupAt, onForceSync, cases, batches }) => {
-   if (!isOpen) return null;
+const TaskFormModalContent = ({ isOpen, onClose, task, day, onSave, onDelete, onDuplicate, tasks, colors, activityTypes, ppCodes, viaticumRates, currentMonthBudget, lodgingRates, sortedActivityTypes, getSortedSubtypes, taskSyncMap, lastBackupAt, onForceSync, cases, batches }) => {
    const isNew = !task;
    const taskStatus = task?.status || 'pending';
    
@@ -4518,6 +4517,12 @@ const SideBanner = ({ selectedDate, markers, colors }) => {
   );
 };
 
+
+const TaskFormModal = (props) => {
+  if (!props.isOpen) return null;
+  return <TaskFormModalContent {...props} />;
+};
+
 // --- PAPELERA DE ACTIVIDADES ---
 const TrashModal = ({ isOpen, onClose, trashTasks, onRestore, onPermanentDelete, onEmptyTrash, colors, activityTypes }) => {
   const [selectedTrashItem, setSelectedTrashItem] = useState(null);
@@ -4854,15 +4859,24 @@ const App = () => {
     });
 
     // --- CASOS / EXPEDIENTES: Listener ---
+    // Deep sanitizer: convert ALL Firestore Timestamps to ISO strings recursively
+    const sanitizeFirestore = (obj) => {
+      if (!obj || typeof obj !== 'object') return obj;
+      if (typeof obj.toDate === 'function') return obj.toDate().toISOString();
+      if (Array.isArray(obj)) return obj.map(sanitizeFirestore);
+      const out = {};
+      for (const k of Object.keys(obj)) out[k] = sanitizeFirestore(obj[k]);
+      return out;
+    };
     const casesQuery = query(collection(db, 'users', user.uid, 'cases'));
     const unsubscribeCases = onSnapshot(casesQuery, (snapshot) => {
-      setCases(snapshot.docs.map(d => ({ ...d.data(), id: d.id })));
+      setCases(snapshot.docs.map(d => ({ ...sanitizeFirestore(d.data()), id: d.id })));
     });
 
     // --- CASE LINKS (relaciones entre casos): Listener ---
     const caseLinksQuery = query(collection(db, 'users', user.uid, 'case_links'));
     const unsubscribeCaseLinks = onSnapshot(caseLinksQuery, (snapshot) => {
-      setCaseLinks(snapshot.docs.map(d => ({ ...d.data(), id: d.id })));
+      setCaseLinks(snapshot.docs.map(d => ({ ...sanitizeFirestore(d.data()), id: d.id })));
     });
 
     // --- BATCHES (lotes): Listener ---
@@ -4894,7 +4908,8 @@ const App = () => {
             setResumeTaskId(data.resumeTaskId || null);
             if(data.activityTypes) {
                 // Merge: conservar tipos guardados + agregar nuevos defaults que no existan
-                const saved = data.activityTypes;
+                // Strip 'expediente' from fields (now handled by Caso/Expediente section)
+                const saved = data.activityTypes.map(t => t.fields ? { ...t, fields: t.fields.filter(f => f !== 'expediente') } : t);
                 const savedIds = new Set(saved.map(t => t.id));
                 const missingDefaults = DEFAULT_ACTIVITY_TYPES.filter(dt => !savedIds.has(dt.id));
                 setActivityTypes([...saved, ...missingDefaults]);
@@ -5252,7 +5267,7 @@ const App = () => {
           }
           // Restaurar configuracion
           if (data.settings) {
-            if (data.settings.activityTypes) setActivityTypes(data.settings.activityTypes);
+            if (data.settings.activityTypes) setActivityTypes(data.settings.activityTypes.map(t => t.fields ? { ...t, fields: t.fields.filter(f => f !== 'expediente') } : t));
             if (data.settings.ppCodes) setPpCodes(data.settings.ppCodes);
             if (data.settings.viaticumRates) setViaticumRates(data.settings.viaticumRates);
             if (data.settings.monthlyBudgets) setMonthlyBudgets(data.settings.monthlyBudgets);
@@ -5307,7 +5322,7 @@ const App = () => {
           });
         }
         if (data.settings) {
-          if (data.settings.activityTypes) setActivityTypes(data.settings.activityTypes);
+          if (data.settings.activityTypes) setActivityTypes(data.settings.activityTypes.map(t => t.fields ? { ...t, fields: t.fields.filter(f => f !== 'expediente') } : t));
           if (data.settings.ppCodes) setPpCodes(data.settings.ppCodes);
           if (data.settings.viaticumRates) setViaticumRates(data.settings.viaticumRates);
           if (data.settings.monthlyBudgets) setMonthlyBudgets(data.settings.monthlyBudgets);
