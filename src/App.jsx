@@ -2523,6 +2523,8 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
         periodEnd: d.periodEnd || null,
         fileName: d.fileName || null,
         downloadURL: d.downloadURL || null,
+        linkedActivityTypeId: d.linkedActivityTypeId || null,
+        linkedActivityTypeName: d.linkedActivityTypeName || null,
         createdAt: d.createdAt || null
       })),
       firebase: {
@@ -3006,6 +3008,8 @@ body{font-family:var(--font);background:var(--surface);color:var(--ink);line-hei
         <input type="date" id="docsEnd" class="search-box" style="width:auto;padding:8px 12px;max-width:180px" oninput="renderDocumentsTab()">
         <label for="docsDay">Día:</label>
         <input type="date" id="docsDay" class="search-box" style="width:auto;padding:8px 12px;max-width:180px" oninput="renderDocumentsTab()">
+        <label for="docsActivity">Actividad:</label>
+        <select id="docsActivity" class="search-box" style="width:auto;padding:8px 12px;max-width:280px" onchange="renderDocumentsTab()"></select>
       </div>
       <div id="docsContainer"></div>
     </div>
@@ -3479,6 +3483,13 @@ function renderDocumentsTab(){
   var start=document.getElementById('docsStart')?.value||'';
   var end=document.getElementById('docsEnd')?.value||'';
   var day=document.getElementById('docsDay')?.value||'';
+  var activitySel=document.getElementById('docsActivity');
+  if(activitySel&&activitySel.options.length===0){
+    var opts='<option value="">Todas las actividades</option>';
+    (DATA.activityTypes||[]).forEach(function(a){opts+='<option value="'+a.id+'">'+a.name+'</option>';});
+    activitySel.innerHTML=opts;
+  }
+  var activityFilter=activitySel?activitySel.value:'';
 
   if(day){
     docs=docs.filter(function(d){
@@ -3489,8 +3500,12 @@ function renderDocumentsTab(){
     if(end)docs=docs.filter(function(d){return (d.periodStart||d.periodEnd||'')<=end;});
   }
 
+  if(activityFilter){
+    docs=docs.filter(function(d){return d.type!=='comprobantes' || d.linkedActivityTypeId===activityFilter;});
+  }
+
   if(!docs.length){
-    container.innerHTML='<div class="empty-state"><p>No hay documentos para el período seleccionado.</p></div>';
+    container.innerHTML='<div class="empty-state"><p>No hay documentos para el período/actividad seleccionada.</p></div>';
     return;
   }
 
@@ -3510,7 +3525,7 @@ function renderDocumentsTab(){
     html+='<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">';
     list.forEach(function(d){
       html+='<div class="day-detail" style="display:flex;justify-content:space-between;align-items:center;gap:8px">';
-      html+='<div><div style="font-weight:600">'+(d.fileName||'Documento PDF')+'</div><div style="font-size:12px;color:#6B7280">Período: '+formatDocPeriod(d)+'</div></div>';
+      html+='<div><div style="font-weight:600">'+(d.fileName||'Documento PDF')+'</div><div style="font-size:12px;color:#6B7280">Período: '+formatDocPeriod(d)+'</div>'+(d.type==='comprobantes'?'<div style="font-size:12px;color:#6B7280">Actividad: '+(d.linkedActivityTypeName||'Sin definir')+'</div>':'')+'</div>';
       html+='<button class="btn-pdf" onclick="openDoc(\''+(d.downloadURL||'')+'\')">Descargar</button>';
       html+='</div>';
     });
@@ -4835,11 +4850,12 @@ const TrashModal = ({ isOpen, onClose, trashTasks, onRestore, onPermanentDelete,
   );
 };
 
-const DocumentsModal = ({ isOpen, onClose, colors, documents, onUpload, onDelete, onReplace }) => {
+const DocumentsModal = ({ isOpen, onClose, colors, documents, onUpload, onDelete, onReplace, activityTypes }) => {
   const [docType, setDocType] = useState(DOCUMENT_TYPES[0].value);
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
+  const [linkedActivityTypeId, setLinkedActivityTypeId] = useState('');
 
   useEffect(() => {
     if (!isOpen) {
@@ -4847,6 +4863,7 @@ const DocumentsModal = ({ isOpen, onClose, colors, documents, onUpload, onDelete
       setPeriodStart('');
       setPeriodEnd('');
       setSelectedFile(null);
+      setLinkedActivityTypeId('');
     }
   }, [isOpen]);
 
@@ -4863,7 +4880,16 @@ const DocumentsModal = ({ isOpen, onClose, colors, documents, onUpload, onDelete
     if (!selectedFile) return alert('Seleccione un archivo PDF.');
     if (!periodStart || !periodEnd) return alert('Seleccione periodo de inicio y final.');
     if (periodStart > periodEnd) return alert('La fecha inicial no puede ser mayor que la final.');
-    await onUpload({ file: selectedFile, type: docType, periodStart, periodEnd });
+    if (docType === 'comprobantes' && !linkedActivityTypeId) return alert('Seleccione el tipo de actividad al que corresponde el comprobante.');
+    const linkedType = (activityTypes || []).find(a => a.id === linkedActivityTypeId);
+    await onUpload({
+      file: selectedFile,
+      type: docType,
+      periodStart,
+      periodEnd,
+      linkedActivityTypeId: docType === 'comprobantes' ? (linkedActivityTypeId || null) : null,
+      linkedActivityTypeName: docType === 'comprobantes' ? (linkedType?.name || null) : null,
+    });
     setSelectedFile(null);
   };
 
@@ -4896,6 +4922,15 @@ const DocumentsModal = ({ isOpen, onClose, colors, documents, onUpload, onDelete
             <input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: `1px solid ${colors.border}`, background: colors.bgPrimary, color: colors.textPrimary }} />
             <input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: `1px solid ${colors.border}`, background: colors.bgPrimary, color: colors.textPrimary }} />
           </div>
+          {docType === 'comprobantes' && (
+            <div style={{ marginBottom: '10px' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', color: colors.textSecondary, fontWeight: 600 }}>Tipo de actividad asociada</label>
+              <select value={linkedActivityTypeId} onChange={(e) => setLinkedActivityTypeId(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: `1px solid ${colors.border}`, background: colors.bgPrimary, color: colors.textPrimary }}>
+                <option value="">Seleccione tipo de actividad…</option>
+                {(activityTypes || []).map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
+              </select>
+            </div>
+          )}
           <button onClick={submitUpload} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer', backgroundColor: colors.success, color: colors.bgPrimary, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Upload size={14} /> Subir documento
           </button>
@@ -4918,6 +4953,9 @@ const DocumentsModal = ({ isOpen, onClose, colors, documents, onUpload, onDelete
                     <div>
                       <div style={{ color: colors.textPrimary, fontSize: '12px', fontWeight: 600 }}>{docItem.fileName || 'Documento PDF'}</div>
                       <div style={{ color: colors.textMuted, fontSize: '11px' }}>Período: {docItem.periodStart || '—'} a {docItem.periodEnd || '—'}</div>
+                      {docItem.type === 'comprobantes' && (
+                        <div style={{ color: colors.textMuted, fontSize: '11px' }}>Actividad asociada: {docItem.linkedActivityTypeName || 'Sin definir'}</div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button onClick={() => triggerDownload(docItem)} title="Descargar" style={{ padding: '6px', borderRadius: '6px', border: `1px solid ${colors.border}`, background: 'transparent', color: colors.textMuted, cursor: 'pointer' }}><Download size={14} /></button>
@@ -5377,7 +5415,7 @@ const App = () => {
     }
   };
 
-  const uploadDocumentToDB = async ({ file, type, periodStart, periodEnd }) => {
+  const uploadDocumentToDB = async ({ file, type, periodStart, periodEnd, linkedActivityTypeId = null, linkedActivityTypeName = null }) => {
     if (!user || !file) return;
     if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) { alert('Solo se permiten archivos PDF.'); return; }
     markSaving();
@@ -5397,6 +5435,8 @@ const App = () => {
         storagePath,
         downloadURL,
         fileSize: file.size || 0,
+        linkedActivityTypeId: type === 'comprobantes' ? linkedActivityTypeId : null,
+        linkedActivityTypeName: type === 'comprobantes' ? linkedActivityTypeName : null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }, { merge: true });
@@ -6211,7 +6251,7 @@ const App = () => {
       <ReportsModal isOpen={isReportsModalOpen} onClose={() => setIsReportsModalOpen(false)} tasks={tasks} markers={markers} dayOverrides={dayOverrides} colors={colors} onImportBackup={handleImportBackup} activityTypes={activityTypes} viaticumRates={viaticumRates} trashTasks={trashTasks} onExportBackup={exportBackup} onImportBackupJSON={importBackup} onUploadBackupToStorage={uploadBackupToStorage} onListStorageBackups={listStorageBackups} onRestoreFromStorage={restoreFromStorageBackup}/>
       <CasesModal isOpen={isCasesModalOpen} onClose={() => setIsCasesModalOpen(false)} cases={cases} onSaveCase={saveCaseToDB} onDeleteCase={deleteCaseFromDB} caseLinks={caseLinks} onSaveCaseLink={saveCaseLinkToDB} onDeleteCaseLink={deleteCaseLinkFromDB} colors={colors} holidays={holidayDates} tasks={tasks} Modal={Modal} />
       <BatchesModal isOpen={isBatchesModalOpen} onClose={() => setIsBatchesModalOpen(false)} batches={batches} cases={cases} tasks={tasks} onSaveBatch={saveBatchToDB} onDeleteBatch={deleteBatchFromDB} colors={colors} Modal={Modal} />
-      <DocumentsModal isOpen={isDocumentsModalOpen} onClose={() => setIsDocumentsModalOpen(false)} colors={colors} documents={documents} onUpload={uploadDocumentToDB} onDelete={deleteDocumentFromDB} onReplace={replaceDocumentInDB} />
+      <DocumentsModal isOpen={isDocumentsModalOpen} onClose={() => setIsDocumentsModalOpen(false)} colors={colors} documents={documents} onUpload={uploadDocumentToDB} onDelete={deleteDocumentFromDB} onReplace={replaceDocumentInDB} activityTypes={activityTypes} />
       <ConfigModal isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} colors={colors} activityTypes={activityTypes} setActivityTypes={setActivityTypes} ppCodes={ppCodes} setPpCodes={setPpCodes} viaticumRates={viaticumRates} setViaticumRates={setViaticumRates} tasks={tasks} onUpdateTasks={batchUpdateTasks} monthlyBudgets={monthlyBudgets} setMonthlyBudgets={setMonthlyBudgets} isBudgetLocked={isBudgetLocked} setIsBudgetLocked={setIsBudgetLocked} lodgingRates={lodgingRates} setLodgingRates={setLodgingRates} isViaticosLocked={isViaticosLocked} setIsViaticosLocked={setIsViaticosLocked} isTypesLocked={isTypesLocked} setIsTypesLocked={setIsTypesLocked} isPPLocked={isPPLocked} setIsPPLocked={setIsPPLocked} />
       <ScheduleAlert task={scheduleAlert} onAction={handleScheduleAction} onClose={() => setScheduleAlert(null)} colors={colors} activityTypes={activityTypes}/>
       <DayModalityModal isOpen={isModalityModalOpen} onClose={() => setIsModalityModalOpen(false)} selectedDay={selectedDay} currentModality={getDayModality(toISODateString(selectedDay))} onSave={(mod) => saveDayOverrideToDB(toISODateString(selectedDay), mod)} colors={colors}/>
