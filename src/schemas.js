@@ -201,3 +201,13 @@ export const RISK_LEVELS = {
   rojo: { label: 'Vencido / Crítico', color: '#ef4444' },
   sin_fecha: { label: 'Sin fecha', color: '#9ca3af' }
 };
+
+// ============================================================
+// TIPOS DE DOCUMENTO (gestión de archivos PDF)
+// ============================================================
+
+export const DOC_TYPES = [
+  { value: 'teletrabajo', label: 'Informe mensual de teletrabajo' },
+  { value: 'programacion_ejecucion', label: 'Informe de programación y ejecución semanal' },
+  { value: 'comprobantes', label: 'Comprobante' }
+];

@@ -18,15 +18,10 @@ import { initializeFirestore, persistentLocalCache, persistentSingleTabManager, 
 import { getStorage, ref, uploadString, uploadBytes, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
 import { CasesModal, CaseLinkSection } from './CasesManager.jsx';
 import { BatchesModal, BatchLinkSection } from './BatchesManager.jsx';
+import { DocumentsModal } from './DocumentsManager.jsx';
 
 // --- DATA SEMILLA (CONSTANTES) ---
 const APP_VERSION = '2026.03.01.1';
-
-const DOCUMENT_TYPES = [
-  { value: 'teletrabajo_mensual', label: 'Informes mensuales de teletrabajo' },
-  { value: 'programacion_ejecucion_semanal', label: 'Informes de programación y ejecución semanal' },
-  { value: 'comprobantes', label: 'Comprobantes' },
-];
 
 const PAYMENTS_2026 = [
   { date: '2026-01-13', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-01-23', name: 'Salario Escolar', type: 'payment', special: true }, { date: '2026-01-28', name: 'Pago Salario IIQ', type: 'payment' },
@@ -2514,19 +2509,9 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
       holidays: HOLIDAYS_CR_2026,
       efemerides: EFEMERIDES_2026,
       viaticumRates: viaticumRates,
+      documents: documents.map(d => ({ docUid: d.docUid, docType: d.docType, periodStart: d.periodStart, periodEnd: d.periodEnd, fileName: d.fileName, downloadURL: d.downloadURL, uploadedAt: d.uploadedAt, fileSize: d.fileSize })),
       generatedAt: new Date().toISOString(),
       generatedBy: 'Calendario SINAC - ACOPAC OSRO',
-      documents: documents.map(d => ({
-        id: d.id,
-        type: d.type || null,
-        periodStart: d.periodStart || null,
-        periodEnd: d.periodEnd || null,
-        fileName: d.fileName || null,
-        downloadURL: d.downloadURL || null,
-        linkedActivityTypeId: d.linkedActivityTypeId || null,
-        linkedActivityTypeName: d.linkedActivityTypeName || null,
-        createdAt: d.createdAt || null
-      })),
       firebase: {
         config: { apiKey: "AIzaSyADhSpkSwZGGIjFi6U2swx0WJNq0AD7AVk", authDomain: "calendariosinacv1.firebaseapp.com", projectId: "calendariosinacv1", storageBucket: "calendariosinacv1.firebasestorage.app", messagingSenderId: "900985221783", appId: "1:900985221783:web:d5b6407eb23abf9190efd2" },
         appId: "calendariosinacv1",
@@ -2904,7 +2889,7 @@ body{font-family:var(--font);background:var(--surface);color:var(--ink);line-hei
     <button class="tab" onclick="switchTab('reportC')" role="tab" aria-selected="false">C. Pendientes</button>
     <button class="tab" onclick="switchTab('reportD')" role="tab" aria-selected="false">D. Presupuesto</button>
     <button class="tab" onclick="switchTab('summary')" role="tab" aria-selected="false">Resumen</button>
-    <button class="tab" onclick="switchTab('docs')" role="tab" aria-selected="false">Documentos</button>
+    <button class="tab" onclick="switchTab('documents')" role="tab" aria-selected="false">Documentos</button>
   </div>
 
   <!-- CALENDAR TAB -->
@@ -2998,20 +2983,29 @@ body{font-family:var(--font);background:var(--surface);color:var(--ink);line-hei
   </div>
 
   <!-- DOCUMENTS TAB -->
-  <div id="tab-docs" class="tab-content" style="display:none" role="tabpanel">
+  <div id="tab-documents" class="tab-content" style="display:none" role="tabpanel">
     <div class="card">
-      <h2>Documentos PDF</h2>
-      <div class="date-filter-row" style="margin-bottom:12px">
-        <label for="docsStart">Desde:</label>
-        <input type="date" id="docsStart" class="search-box" style="width:auto;padding:8px 12px;max-width:180px" oninput="renderDocumentsTab()">
-        <label for="docsEnd">Hasta:</label>
-        <input type="date" id="docsEnd" class="search-box" style="width:auto;padding:8px 12px;max-width:180px" oninput="renderDocumentsTab()">
-        <label for="docsDay">Día:</label>
-        <input type="date" id="docsDay" class="search-box" style="width:auto;padding:8px 12px;max-width:180px" oninput="renderDocumentsTab()">
-        <label for="docsActivity">Actividad:</label>
-        <select id="docsActivity" class="search-box" style="width:auto;padding:8px 12px;max-width:280px" onchange="renderDocumentsTab()"></select>
+      <h2 style="display:flex;align-items:center;gap:10px">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Documentos
+      </h2>
+      <p style="color:#8a9bae;font-size:14px;margin-bottom:16px">Informes y comprobantes firmados disponibles para descarga.</p>
+
+      <!-- Search bar -->
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px;padding:14px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
+        <div style="flex:1;min-width:140px">
+          <label style="display:block;font-size:11px;font-weight:600;color:#8a9bae;margin-bottom:4px">Desde</label>
+          <input type="date" id="docSearchFrom" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:#e0f0f0;font-size:13px" onchange="filterDocuments()">
+        </div>
+        <div style="flex:1;min-width:140px">
+          <label style="display:block;font-size:11px;font-weight:600;color:#8a9bae;margin-bottom:4px">Hasta</label>
+          <input type="date" id="docSearchTo" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:#e0f0f0;font-size:13px" onchange="filterDocuments()">
+        </div>
+        <button onclick="clearDocFilter()" style="padding:8px 14px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#8a9bae;cursor:pointer;font-size:12px">Limpiar</button>
+        <button onclick="downloadAllVisible()" style="padding:8px 14px;border-radius:6px;border:none;background:#22c55e;color:#0a1214;cursor:pointer;font-weight:600;font-size:12px">Descargar todos</button>
       </div>
-      <div id="docsContainer"></div>
+
+      <div id="documentsContent"></div>
     </div>
   </div>
 </div>
@@ -3054,7 +3048,7 @@ function refreshCurrentView(){
   if(ACTIVE_TAB==="reportC")renderReportC();
   if(ACTIVE_TAB==="reportD")renderReportD();
   if(ACTIVE_TAB==="summary")renderSummary();
-  if(ACTIVE_TAB==="docs")renderDocumentsTab();
+  if(ACTIVE_TAB==="documents")renderDocuments();
   // If a day is selected, refresh its detail
   if(selectedDate){selectDay(selectedDate)}
 }
@@ -3111,7 +3105,7 @@ function initFirebase(){
   });
   DATA.documents=liveDocs;
   updateLastSync();
-  if(ACTIVE_TAB==="docs")renderDocumentsTab();
+  if(ACTIVE_TAB==="documents")renderDocuments();
 },function(err){
   console.warn("Documents listener error:",err);
 });
@@ -3222,7 +3216,7 @@ function switchTab(tabId){
   if(tabId==='reportC')renderReportC();
   if(tabId==='reportD')renderReportD();
   if(tabId==='summary')renderSummary();
-  if(tabId==='docs')renderDocumentsTab();
+  if(tabId==='documents')renderDocuments();
 }
 
 // ========== CALENDAR ==========
@@ -3440,98 +3434,6 @@ function switchToCalendarAndSelect(iso){
   renderCalendar();
   selectDay(iso);
   document.getElementById('dayDetailCard').scrollIntoView({behavior:'smooth'});
-}
-
-function getDocTypeLabel(type){
-  if(type==='teletrabajo_mensual')return 'Informes mensuales de teletrabajo';
-  if(type==='programacion_ejecucion_semanal')return 'Informes de programación y ejecución semanal';
-  if(type==='comprobantes')return 'Comprobantes';
-  return type||'Sin tipo';
-}
-
-function formatDocPeriod(doc){
-  var start=doc.periodStart||'';
-  var end=doc.periodEnd||'';
-  if(!start&&!end)return 'Sin período';
-  if(start&&end)return start+' a '+end;
-  return start||end;
-}
-
-function openDoc(url){
-  if(!url)return;
-  var a=document.createElement('a');
-  a.href=url;a.target='_blank';a.rel='noopener';a.click();
-}
-
-function downloadDocsGroup(type){
-  var docs=(DATA.documents||[]).filter(function(d){return d.type===type&&d.downloadURL;});
-  docs.forEach(function(d,idx){setTimeout(function(){openDoc(d.downloadURL);},idx*250);});
-}
-
-function renderDocumentsTab(){
-  var container=document.getElementById('docsContainer');
-  if(!container)return;
-  var docs=(DATA.documents||[]).slice().sort(function(a,b){
-    return new Date(a.periodStart||a.createdAt||0)-new Date(b.periodStart||b.createdAt||0);
-  });
-
-  if(!docs.length){
-    container.innerHTML='<div class="empty-state"><p>No hay documentos PDF cargados.</p></div>';
-    return;
-  }
-
-  var start=document.getElementById('docsStart')?.value||'';
-  var end=document.getElementById('docsEnd')?.value||'';
-  var day=document.getElementById('docsDay')?.value||'';
-  var activitySel=document.getElementById('docsActivity');
-  if(activitySel&&activitySel.options.length===0){
-    var opts='<option value="">Todas las actividades</option>';
-    (DATA.activityTypes||[]).forEach(function(a){opts+='<option value="'+a.id+'">'+a.name+'</option>';});
-    activitySel.innerHTML=opts;
-  }
-  var activityFilter=activitySel?activitySel.value:'';
-
-  if(day){
-    docs=docs.filter(function(d){
-      return d.periodStart<=day&&d.periodEnd>=day;
-    });
-  } else {
-    if(start)docs=docs.filter(function(d){return (d.periodEnd||d.periodStart||'')>=start;});
-    if(end)docs=docs.filter(function(d){return (d.periodStart||d.periodEnd||'')<=end;});
-  }
-
-  if(activityFilter){
-    docs=docs.filter(function(d){return d.type!=='comprobantes' || d.linkedActivityTypeId===activityFilter;});
-  }
-
-  if(!docs.length){
-    container.innerHTML='<div class="empty-state"><p>No hay documentos para el período/actividad seleccionada.</p></div>';
-    return;
-  }
-
-  var byType={};
-  docs.forEach(function(d){ if(!byType[d.type])byType[d.type]=[]; byType[d.type].push(d); });
-
-  var ordered=['teletrabajo_mensual','programacion_ejecucion_semanal','comprobantes'];
-  var html='';
-  ordered.forEach(function(type){
-    var list=byType[type]||[];
-    if(!list.length)return;
-    html+='<div class="card" style="margin-bottom:12px">';
-    html+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">';
-    html+='<h3 style="margin:0">'+getDocTypeLabel(type)+' ('+list.length+')</h3>';
-    html+='<button class="btn-pdf" onclick="downloadDocsGroup(\''+type+'\')">Descargar grupo</button>';
-    html+='</div>';
-    html+='<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">';
-    list.forEach(function(d){
-      html+='<div class="day-detail" style="display:flex;justify-content:space-between;align-items:center;gap:8px">';
-      html+='<div><div style="font-weight:600">'+(d.fileName||'Documento PDF')+'</div><div style="font-size:12px;color:#6B7280">Período: '+formatDocPeriod(d)+'</div>'+(d.type==='comprobantes'?'<div style="font-size:12px;color:#6B7280">Actividad: '+(d.linkedActivityTypeName||'Sin definir')+'</div>':'')+'</div>';
-      html+='<button class="btn-pdf" onclick="openDoc(\''+(d.downloadURL||'')+'\')">Descargar</button>';
-      html+='</div>';
-    });
-    html+='</div></div>';
-  });
-  container.innerHTML=html;
 }
 
 // ========== REPORT A (Realizadas) ==========
@@ -3998,6 +3900,114 @@ rows.push([idx===0?pp:'',idx===0?formatCRC(data.total):'',formatCRC(cost),fecha,
   if(y>170){doc.addPage();y=20;}
   addSemTable(sem2,'II Semestre (Julio — Diciembre)',y);
   doc.save('reporte_D_presupuesto.pdf');
+}
+
+// ========== DOCUMENTS ==========
+var DOC_TYPE_LABELS={teletrabajo:'Informes mensuales de teletrabajo',programacion_ejecucion:'Informes de programación y ejecución semanal',comprobantes:'Comprobantes'};
+var DOC_TYPE_ORDER=['teletrabajo','programacion_ejecucion','comprobantes'];
+var visibleDocIds=[];
+
+function fmtDocDate(iso){
+  if(!iso)return '—';
+  try{var d=new Date(iso.indexOf('T')>=0?iso:iso+'T00:00:00');return d.toLocaleDateString('es-CR',{day:'2-digit',month:'2-digit',year:'numeric'});}catch(e){return '—';}
+}
+
+function fmtSize(bytes){
+  if(!bytes)return '';
+  if(bytes<1024)return bytes+' B';
+  if(bytes<1048576)return (bytes/1024).toFixed(1)+' KB';
+  return (bytes/1048576).toFixed(1)+' MB';
+}
+
+function getFilteredDocs(){
+  var docs=(DATA.documents||[]).slice();
+  var from=document.getElementById('docSearchFrom')?.value||'';
+  var to=document.getElementById('docSearchTo')?.value||'';
+  if(from){docs=docs.filter(function(d){return(d.periodEnd||'')>=from;});}
+  if(to){docs=docs.filter(function(d){return(d.periodStart||'')<=to;});}
+  return docs;
+}
+
+function renderDocuments(){
+  var container=document.getElementById('documentsContent');
+  if(!container)return;
+  var docs=getFilteredDocs();
+  visibleDocIds=docs.map(function(d){return d.docUid;});
+
+  if(!DATA.documents||DATA.documents.length===0){
+    container.innerHTML='<div class="empty-state"><p>No hay documentos disponibles.</p></div>';
+    return;
+  }
+
+  if(docs.length===0){
+    container.innerHTML='<div class="empty-state"><p>No se encontraron documentos en el período seleccionado.</p></div>';
+    return;
+  }
+
+  var grouped={};
+  DOC_TYPE_ORDER.forEach(function(t){grouped[t]=[];});
+  docs.forEach(function(d){if(grouped[d.docType])grouped[d.docType].push(d);});
+  DOC_TYPE_ORDER.forEach(function(t){grouped[t].sort(function(a,b){return(a.periodStart||'').localeCompare(b.periodStart||'');});});
+
+  var html='';
+  DOC_TYPE_ORDER.forEach(function(type){
+    var list=grouped[type]||[];
+    var label=DOC_TYPE_LABELS[type]||type;
+    html+='<div style="margin-bottom:24px">';
+    html+='<h3 style="font-size:15px;font-weight:700;color:#2D6A4F;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid rgba(45,106,79,0.2);display:flex;align-items:center;gap:8px">';
+    html+='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+    html+=label+' <span style="font-size:11px;font-weight:400;color:#8a9bae;background:rgba(255,255,255,0.05);padding:2px 8px;border-radius:10px">'+list.length+'</span></h3>';
+
+    if(list.length===0){
+      html+='<p style="font-size:13px;color:#8a9bae;padding:12px;text-align:center">Sin documentos de este tipo.</p>';
+    }else{
+      html+='<table class="report-table"><thead><tr><th style="text-align:left">Documento</th><th>Período</th><th>Tamaño</th><th>Subido</th><th style="width:80px">Acción</th></tr></thead><tbody>';
+      list.forEach(function(d){
+        html+='<tr>';
+        html+='<td style="text-align:left;font-weight:500">'+(d.fileName||'documento.pdf')+'</td>';
+        html+='<td>'+fmtDocDate(d.periodStart)+' — '+fmtDocDate(d.periodEnd)+'</td>';
+        html+='<td>'+fmtSize(d.fileSize)+'</td>';
+        html+='<td>'+fmtDocDate(d.uploadedAt?d.uploadedAt.split('T')[0]:'')+'</td>';
+        html+='<td><a href="'+d.downloadURL+'" target="_blank" rel="noopener" download="'+(d.fileName||'documento.pdf')+'" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:4px;background:#22c55e;color:#0a1214;text-decoration:none;font-size:11px;font-weight:600" title="Descargar">';
+        html+='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+        html+='PDF</a></td>';
+        html+='</tr>';
+      });
+      html+='</tbody></table>';
+    }
+    html+='</div>';
+  });
+
+  container.innerHTML=html;
+}
+
+function filterDocuments(){renderDocuments();}
+function clearDocFilter(){
+  var f=document.getElementById('docSearchFrom');
+  var t=document.getElementById('docSearchTo');
+  if(f)f.value='';
+  if(t)t.value='';
+  renderDocuments();
+}
+
+function downloadAllVisible(){
+  var docs=(DATA.documents||[]).filter(function(d){return visibleDocIds.indexOf(d.docUid)>=0;});
+  if(docs.length===0){alert('No hay documentos para descargar.');return;}
+  if(!confirm('Se descargarán '+docs.length+' documento(s). ¿Continuar?'))return;
+  var delay=0;
+  docs.forEach(function(d){
+    setTimeout(function(){
+      var a=document.createElement('a');
+      a.href=d.downloadURL;
+      a.target='_blank';
+      a.rel='noopener';
+      a.download=d.fileName||'documento.pdf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    },delay);
+    delay+=500;
+  });
 }
 
 // ========== INIT ==========
@@ -4850,132 +4860,6 @@ const TrashModal = ({ isOpen, onClose, trashTasks, onRestore, onPermanentDelete,
   );
 };
 
-const DocumentsModal = ({ isOpen, onClose, colors, documents, onUpload, onDelete, onReplace, activityTypes }) => {
-  const [docType, setDocType] = useState(DOCUMENT_TYPES[0].value);
-  const [periodStart, setPeriodStart] = useState('');
-  const [periodEnd, setPeriodEnd] = useState('');
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [linkedActivityTypeId, setLinkedActivityTypeId] = useState('');
-
-  useEffect(() => {
-    if (!isOpen) {
-      setDocType(DOCUMENT_TYPES[0].value);
-      setPeriodStart('');
-      setPeriodEnd('');
-      setSelectedFile(null);
-      setLinkedActivityTypeId('');
-    }
-  }, [isOpen]);
-
-  const grouped = useMemo(() => {
-    return DOCUMENT_TYPES.reduce((acc, type) => {
-      acc[type.value] = (documents || [])
-        .filter(d => d.type === type.value)
-        .sort((a, b) => new Date(a.periodStart || a.createdAt || 0) - new Date(b.periodStart || b.createdAt || 0));
-      return acc;
-    }, {});
-  }, [documents]);
-
-  const submitUpload = async () => {
-    if (!selectedFile) return alert('Seleccione un archivo PDF.');
-    if (!periodStart || !periodEnd) return alert('Seleccione periodo de inicio y final.');
-    if (periodStart > periodEnd) return alert('La fecha inicial no puede ser mayor que la final.');
-    if (docType === 'comprobantes' && !linkedActivityTypeId) return alert('Seleccione el tipo de actividad al que corresponde el comprobante.');
-    const linkedType = (activityTypes || []).find(a => a.id === linkedActivityTypeId);
-    await onUpload({
-      file: selectedFile,
-      type: docType,
-      periodStart,
-      periodEnd,
-      linkedActivityTypeId: docType === 'comprobantes' ? (linkedActivityTypeId || null) : null,
-      linkedActivityTypeName: docType === 'comprobantes' ? (linkedType?.name || null) : null,
-    });
-    setSelectedFile(null);
-  };
-
-  const triggerDownload = (docItem) => {
-    if (!docItem?.downloadURL) return;
-    const a = document.createElement('a');
-    a.href = docItem.downloadURL;
-    a.download = docItem.fileName || 'documento.pdf';
-    a.target = '_blank';
-    a.rel = 'noopener';
-    a.click();
-  };
-
-  const downloadGroup = (type) => {
-    (grouped[type] || []).forEach((docItem, i) => {
-      setTimeout(() => triggerDownload(docItem), i * 300);
-    });
-  };
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Gestor de Documentos PDF" size="lg" colors={colors}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <div style={{ padding: '12px', border: `1px solid ${colors.border}`, borderRadius: '8px', backgroundColor: colors.bgTertiary }}>
-          <h3 style={{ margin: '0 0 10px 0', color: colors.accent, fontSize: '14px' }}>Subir reporte firmado</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-            <select value={docType} onChange={(e) => setDocType(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: `1px solid ${colors.border}`, background: colors.bgPrimary, color: colors.textPrimary }}>
-              {DOCUMENT_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
-            </select>
-            <input type="file" accept="application/pdf,.pdf" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} style={{ fontSize: '12px' }} />
-            <input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: `1px solid ${colors.border}`, background: colors.bgPrimary, color: colors.textPrimary }} />
-            <input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: `1px solid ${colors.border}`, background: colors.bgPrimary, color: colors.textPrimary }} />
-          </div>
-          {docType === 'comprobantes' && (
-            <div style={{ marginBottom: '10px' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', color: colors.textSecondary, fontWeight: 600 }}>Tipo de actividad asociada</label>
-              <select value={linkedActivityTypeId} onChange={(e) => setLinkedActivityTypeId(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: `1px solid ${colors.border}`, background: colors.bgPrimary, color: colors.textPrimary }}>
-                <option value="">Seleccione tipo de actividad…</option>
-                {(activityTypes || []).map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
-              </select>
-            </div>
-          )}
-          <button onClick={submitUpload} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer', backgroundColor: colors.success, color: colors.bgPrimary, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Upload size={14} /> Subir documento
-          </button>
-        </div>
-
-        {DOCUMENT_TYPES.map(type => (
-          <div key={type.value} style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <h4 style={{ margin: 0, color: colors.textPrimary }}>{type.label} ({grouped[type.value]?.length || 0})</h4>
-              <button onClick={() => downloadGroup(type.value)} disabled={!grouped[type.value]?.length} style={{ padding: '6px 10px', borderRadius: '6px', border: `1px solid ${colors.border}`, background: 'transparent', color: colors.textMuted, cursor: 'pointer', fontSize: '12px' }}>
-                <Download size={12} style={{ verticalAlign: 'middle', marginRight: 5 }} /> Descargar grupo
-              </button>
-            </div>
-            {!grouped[type.value]?.length ? (
-              <p style={{ fontSize: '12px', color: colors.textMuted, margin: 0 }}>Sin documentos cargados.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {grouped[type.value].map(docItem => (
-                  <div key={docItem.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px', alignItems: 'center', padding: '8px', borderRadius: '6px', backgroundColor: colors.bgPrimary, border: `1px solid ${colors.border}` }}>
-                    <div>
-                      <div style={{ color: colors.textPrimary, fontSize: '12px', fontWeight: 600 }}>{docItem.fileName || 'Documento PDF'}</div>
-                      <div style={{ color: colors.textMuted, fontSize: '11px' }}>Período: {docItem.periodStart || '—'} a {docItem.periodEnd || '—'}</div>
-                      {docItem.type === 'comprobantes' && (
-                        <div style={{ color: colors.textMuted, fontSize: '11px' }}>Actividad asociada: {docItem.linkedActivityTypeName || 'Sin definir'}</div>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button onClick={() => triggerDownload(docItem)} title="Descargar" style={{ padding: '6px', borderRadius: '6px', border: `1px solid ${colors.border}`, background: 'transparent', color: colors.textMuted, cursor: 'pointer' }}><Download size={14} /></button>
-                      <label title="Reemplazar" style={{ padding: '6px', borderRadius: '6px', border: `1px solid ${colors.border}`, color: colors.textMuted, cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>
-                        <RefreshCw size={14} />
-                        <input type="file" accept="application/pdf,.pdf" style={{ display: 'none' }} onChange={(e) => { const file = e.target.files?.[0]; if (file) onReplace(docItem, file); e.target.value = ''; }} />
-                      </label>
-                      <button onClick={() => onDelete(docItem)} title="Eliminar" style={{ padding: '6px', borderRadius: '6px', border: `1px solid ${colors.danger}66`, background: 'transparent', color: colors.danger, cursor: 'pointer' }}><Trash2 size={14} /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </Modal>
-  );
-};
-
 const App = () => {
   const [tasks, setTasks] = useState([]);
   const [trashTasks, setTrashTasks] = useState([]);
@@ -5159,9 +5043,13 @@ const App = () => {
       setBatches(snapshot.docs.map(d => ({ ...d.data(), id: d.id })));
     });
 
-    const documentsQuery = query(collection(db, 'users', user.uid, 'documents'));
-    const unsubscribeDocuments = onSnapshot(documentsQuery, (snapshot) => {
-      setDocuments(snapshot.docs.map(d => ({ ...sanitizeFirestore(d.data()), id: d.id })));
+    // --- DOCUMENTOS: Listener ---
+    const docsQuery = query(collection(db, 'users', user.uid, 'documents'));
+    const unsubscribeDocuments = onSnapshot(docsQuery, (snapshot) => {
+      setDocuments(snapshot.docs.map(d => {
+        const data = d.data();
+        return sanitizeFirestore({ ...data, id: d.id });
+      }));
     });
 
     // --- PAPELERA: Listener de tareas eliminadas ---
@@ -5415,81 +5303,66 @@ const App = () => {
     }
   };
 
-  const uploadDocumentToDB = async ({ file, type, periodStart, periodEnd, linkedActivityTypeId = null, linkedActivityTypeName = null }) => {
-    if (!user || !file) return;
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) { alert('Solo se permiten archivos PDF.'); return; }
+  // --- DOCUMENTOS: CRUD ---
+  const uploadDocumentToDB = async (docType, periodStart, periodEnd, file) => {
+    if (!user) throw new Error('No user');
     markSaving();
-    const db = getFirestore();
+    const docUid = Date.now().toString(36) + Math.random().toString(36).substr(2);
+    const storagePath = `users/${user.uid}/documents/${docUid}_${file.name}`;
     const storage = getStorage();
-    const docRef = doc(collection(db, 'users', user.uid, 'documents'));
-    const storagePath = `users/${user.uid}/documents/${docRef.id}.pdf`;
     const storageRef = ref(storage, storagePath);
     try {
-      await uploadBytes(storageRef, file, { contentType: 'application/pdf' });
+      await uploadBytes(storageRef, file);
       const downloadURL = await getDownloadURL(storageRef);
-      await setDoc(docRef, {
-        type,
-        periodStart,
-        periodEnd,
-        fileName: file.name,
-        storagePath,
-        downloadURL,
-        fileSize: file.size || 0,
-        linkedActivityTypeId: type === 'comprobantes' ? linkedActivityTypeId : null,
-        linkedActivityTypeName: type === 'comprobantes' ? linkedActivityTypeName : null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }, { merge: true });
+      const metadata = { docUid, docType, periodStart, periodEnd, fileName: file.name, storagePath, downloadURL, uploadedAt: new Date().toISOString(), fileSize: file.size };
+      const db = getFirestore();
+      await setDoc(doc(db, 'users', user.uid, 'documents', docUid), metadata);
       markSaved();
+      return metadata;
     } catch (e) {
-      console.error('Error uploading document', e);
+      console.error('Error uploading document:', e);
       markSyncError();
-      alert('No se pudo subir el documento PDF.');
+      throw e;
     }
   };
 
-  const replaceDocumentInDB = async (docItem, file) => {
-    if (!user || !docItem || !file) return;
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) { alert('Solo se permiten archivos PDF.'); return; }
+  const deleteDocumentFromDB = async (docData) => {
+    if (!user) return;
     markSaving();
-    const db = getFirestore();
-    const storage = getStorage();
-    const storagePath = docItem.storagePath || `users/${user.uid}/documents/${docItem.id}.pdf`;
-    const storageRef = ref(storage, storagePath);
     try {
-      await uploadBytes(storageRef, file, { contentType: 'application/pdf' });
-      const downloadURL = await getDownloadURL(storageRef);
-      await setDoc(doc(db, 'users', user.uid, 'documents', docItem.id), {
-        fileName: file.name,
-        fileSize: file.size || 0,
-        storagePath,
-        downloadURL,
-        updatedAt: new Date().toISOString(),
-      }, { merge: true });
+      const storage = getStorage();
+      const storageRef = ref(storage, docData.storagePath);
+      await deleteObject(storageRef).catch(err => console.warn('Storage delete error (may already be gone):', err));
+      const db = getFirestore();
+      await deleteDoc(doc(db, 'users', user.uid, 'documents', docData.docUid));
       markSaved();
     } catch (e) {
-      console.error('Error replacing document', e);
+      console.error('Error deleting document:', e);
       markSyncError();
-      alert('No se pudo reemplazar el documento PDF.');
+      throw e;
     }
   };
 
-  const deleteDocumentFromDB = async (docItem) => {
-    if (!user || !docItem) return;
-    if (!confirm('¿Eliminar este documento PDF?')) return;
+  const replaceDocumentInDB = async (docData, newFile) => {
+    if (!user) throw new Error('No user');
     markSaving();
-    const db = getFirestore();
     try {
-      if (docItem.storagePath) {
-        const storage = getStorage();
-        await deleteObject(ref(storage, docItem.storagePath)).catch(() => {});
-      }
-      await deleteDoc(doc(db, 'users', user.uid, 'documents', docItem.id));
+      const storage = getStorage();
+      const oldRef = ref(storage, docData.storagePath);
+      await deleteObject(oldRef).catch(err => console.warn('Old file delete error:', err));
+      const newStoragePath = `users/${user.uid}/documents/${docData.docUid}_${newFile.name}`;
+      const newRef = ref(storage, newStoragePath);
+      await uploadBytes(newRef, newFile);
+      const downloadURL = await getDownloadURL(newRef);
+      const db = getFirestore();
+      await setDoc(doc(db, 'users', user.uid, 'documents', docData.docUid), {
+        ...docData, fileName: newFile.name, storagePath: newStoragePath, downloadURL, fileSize: newFile.size, uploadedAt: new Date().toISOString()
+      });
       markSaved();
     } catch (e) {
-      console.error('Error deleting document', e);
+      console.error('Error replacing document:', e);
       markSyncError();
-      alert('No se pudo eliminar el documento PDF.');
+      throw e;
     }
   };
 
@@ -6005,7 +5878,7 @@ const App = () => {
             <button className="hide-on-mobile" onClick={() => setShowWeekends(!showWeekends)} style={{padding:'6px',borderRadius:'6px',cursor:'pointer',border:`1px solid ${showWeekends?colors.success:colors.border}`,backgroundColor:colors.bgTertiary,color:showWeekends?colors.success:colors.textMuted}} title="Fines de Semana"><EyeOff size={16}/></button>
             <button onClick={() => setIsCasesModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.accent,borderRadius:'6px',position:'relative'}} title="Casos / Expedientes"><Briefcase size={18}/>{cases.length > 0 && <span style={{position:'absolute',top:'-2px',right:'-4px',backgroundColor:colors.accent,color:colors.bgPrimary,fontSize:'8px',fontWeight:'bold',borderRadius:'50%',minWidth:'14px',height:'14px',display:'flex',alignItems:'center',justifyContent:'center',padding:'0 2px'}}>{cases.length}</span>}</button>
             <button onClick={() => setIsBatchesModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px',position:'relative'}} title="Lotes">{<Layers size={18}/>}{batches.length > 0 && <span style={{position:'absolute',top:'-2px',right:'-4px',backgroundColor:colors.textMuted,color:colors.bgPrimary,fontSize:'8px',fontWeight:'bold',borderRadius:'50%',minWidth:'14px',height:'14px',display:'flex',alignItems:'center',justifyContent:'center',padding:'0 2px'}}>{batches.length}</span>}</button>
-            <button onClick={() => setIsDocumentsModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px',position:'relative'}} title="Documentos PDF"><FileSpreadsheet size={18}/>{documents.length > 0 && <span style={{position:'absolute',top:'-2px',right:'-4px',backgroundColor:colors.success,color:colors.bgPrimary,fontSize:'8px',fontWeight:'bold',borderRadius:'50%',minWidth:'14px',height:'14px',display:'flex',alignItems:'center',justifyContent:'center',padding:'0 2px'}}>{documents.length}</span>}</button>
+            <button onClick={() => setIsDocumentsModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px',position:'relative'}} title="Documentos"><Upload size={18}/>{documents.length > 0 && <span style={{position:'absolute',top:'-2px',right:'-4px',backgroundColor:colors.accent,color:colors.bgPrimary,fontSize:'8px',fontWeight:'bold',borderRadius:'50%',minWidth:'14px',height:'14px',display:'flex',alignItems:'center',justifyContent:'center',padding:'0 2px'}}>{documents.length}</span>}</button>
             <button onClick={() => setIsReportsModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px'}} title="Reportes"><FileText size={18}/></button>
             <button onClick={() => setIsDarkMode(!isDarkMode)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px'}} title={isDarkMode ? "Modo Claro" : "Modo Oscuro"}>{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
             <button onClick={() => { setSelectedDay(new Date()); setEditingTask(null); setIsTaskModalOpen(true); }} style={{padding:'8px 14px',backgroundColor:colors.success,color:colors.bgPrimary,borderRadius:'6px',border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px',fontWeight:'bold',fontSize:'13px', whiteSpace: 'nowrap'}}><Plus size={16}/>{isMobile ? '' : ' Nueva'}</button>
@@ -6251,7 +6124,7 @@ const App = () => {
       <ReportsModal isOpen={isReportsModalOpen} onClose={() => setIsReportsModalOpen(false)} tasks={tasks} markers={markers} dayOverrides={dayOverrides} colors={colors} onImportBackup={handleImportBackup} activityTypes={activityTypes} viaticumRates={viaticumRates} trashTasks={trashTasks} onExportBackup={exportBackup} onImportBackupJSON={importBackup} onUploadBackupToStorage={uploadBackupToStorage} onListStorageBackups={listStorageBackups} onRestoreFromStorage={restoreFromStorageBackup}/>
       <CasesModal isOpen={isCasesModalOpen} onClose={() => setIsCasesModalOpen(false)} cases={cases} onSaveCase={saveCaseToDB} onDeleteCase={deleteCaseFromDB} caseLinks={caseLinks} onSaveCaseLink={saveCaseLinkToDB} onDeleteCaseLink={deleteCaseLinkFromDB} colors={colors} holidays={holidayDates} tasks={tasks} Modal={Modal} />
       <BatchesModal isOpen={isBatchesModalOpen} onClose={() => setIsBatchesModalOpen(false)} batches={batches} cases={cases} tasks={tasks} onSaveBatch={saveBatchToDB} onDeleteBatch={deleteBatchFromDB} colors={colors} Modal={Modal} />
-      <DocumentsModal isOpen={isDocumentsModalOpen} onClose={() => setIsDocumentsModalOpen(false)} colors={colors} documents={documents} onUpload={uploadDocumentToDB} onDelete={deleteDocumentFromDB} onReplace={replaceDocumentInDB} activityTypes={activityTypes} />
+      <DocumentsModal isOpen={isDocumentsModalOpen} onClose={() => setIsDocumentsModalOpen(false)} documents={documents} onUpload={uploadDocumentToDB} onDelete={deleteDocumentFromDB} onReplace={replaceDocumentInDB} colors={colors} isOffline={isOffline} />
       <ConfigModal isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} colors={colors} activityTypes={activityTypes} setActivityTypes={setActivityTypes} ppCodes={ppCodes} setPpCodes={setPpCodes} viaticumRates={viaticumRates} setViaticumRates={setViaticumRates} tasks={tasks} onUpdateTasks={batchUpdateTasks} monthlyBudgets={monthlyBudgets} setMonthlyBudgets={setMonthlyBudgets} isBudgetLocked={isBudgetLocked} setIsBudgetLocked={setIsBudgetLocked} lodgingRates={lodgingRates} setLodgingRates={setLodgingRates} isViaticosLocked={isViaticosLocked} setIsViaticosLocked={setIsViaticosLocked} isTypesLocked={isTypesLocked} setIsTypesLocked={setIsTypesLocked} isPPLocked={isPPLocked} setIsPPLocked={setIsPPLocked} />
       <ScheduleAlert task={scheduleAlert} onAction={handleScheduleAction} onClose={() => setScheduleAlert(null)} colors={colors} activityTypes={activityTypes}/>
       <DayModalityModal isOpen={isModalityModalOpen} onClose={() => setIsModalityModalOpen(false)} selectedDay={selectedDay} currentModality={getDayModality(toISODateString(selectedDay))} onSave={(mod) => saveDayOverrideToDB(toISODateString(selectedDay), mod)} colors={colors}/>
