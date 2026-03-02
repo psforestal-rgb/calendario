@@ -15,9 +15,10 @@ import XLSX from 'xlsx-js-style';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, query, writeBatch, where, getDocs, getFirestore } from 'firebase/firestore';
-import { getStorage, ref, uploadString, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
+import { getStorage, ref, uploadString, uploadBytes, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
 import { CasesModal, CaseLinkSection } from './CasesManager.jsx';
 import { BatchesModal, BatchLinkSection } from './BatchesManager.jsx';
+import { DocumentsModal } from './DocumentsManager.jsx';
 
 // --- DATA SEMILLA (CONSTANTES) ---
 const APP_VERSION = '2026.03.01.1';
@@ -2508,6 +2509,7 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
       holidays: HOLIDAYS_CR_2026,
       efemerides: EFEMERIDES_2026,
       viaticumRates: viaticumRates,
+      documents: documents.map(d => ({ docUid: d.docUid, docType: d.docType, periodStart: d.periodStart, periodEnd: d.periodEnd, fileName: d.fileName, downloadURL: d.downloadURL, uploadedAt: d.uploadedAt, fileSize: d.fileSize })),
       generatedAt: new Date().toISOString(),
       generatedBy: 'Calendario SINAC - ACOPAC OSRO',
       firebase: {
@@ -2887,6 +2889,7 @@ body{font-family:var(--font);background:var(--surface);color:var(--ink);line-hei
     <button class="tab" onclick="switchTab('reportC')" role="tab" aria-selected="false">C. Pendientes</button>
     <button class="tab" onclick="switchTab('reportD')" role="tab" aria-selected="false">D. Presupuesto</button>
     <button class="tab" onclick="switchTab('summary')" role="tab" aria-selected="false">Resumen</button>
+    <button class="tab" onclick="switchTab('documents')" role="tab" aria-selected="false">Documentos</button>
   </div>
 
   <!-- CALENDAR TAB -->
@@ -2978,6 +2981,33 @@ body{font-family:var(--font);background:var(--surface);color:var(--ink);line-hei
       <div id="summaryContent"></div>
     </div>
   </div>
+
+  <!-- DOCUMENTS TAB -->
+  <div id="tab-documents" class="tab-content" style="display:none" role="tabpanel">
+    <div class="card">
+      <h2 style="display:flex;align-items:center;gap:10px">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Documentos
+      </h2>
+      <p style="color:#8a9bae;font-size:14px;margin-bottom:16px">Informes y comprobantes firmados disponibles para descarga.</p>
+
+      <!-- Search bar -->
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px;padding:14px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
+        <div style="flex:1;min-width:140px">
+          <label style="display:block;font-size:11px;font-weight:600;color:#8a9bae;margin-bottom:4px">Desde</label>
+          <input type="date" id="docSearchFrom" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:#e0f0f0;font-size:13px" onchange="filterDocuments()">
+        </div>
+        <div style="flex:1;min-width:140px">
+          <label style="display:block;font-size:11px;font-weight:600;color:#8a9bae;margin-bottom:4px">Hasta</label>
+          <input type="date" id="docSearchTo" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:#e0f0f0;font-size:13px" onchange="filterDocuments()">
+        </div>
+        <button onclick="clearDocFilter()" style="padding:8px 14px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#8a9bae;cursor:pointer;font-size:12px">Limpiar</button>
+        <button onclick="downloadAllVisible()" style="padding:8px 14px;border-radius:6px;border:none;background:#22c55e;color:#0a1214;cursor:pointer;font-weight:600;font-size:12px">Descargar todos</button>
+      </div>
+
+      <div id="documentsContent"></div>
+    </div>
+  </div>
 </div>
 
 <div class="footer">
@@ -3018,6 +3048,7 @@ function refreshCurrentView(){
   if(ACTIVE_TAB==="reportC")renderReportC();
   if(ACTIVE_TAB==="reportD")renderReportD();
   if(ACTIVE_TAB==="summary")renderSummary();
+  if(ACTIVE_TAB==="documents")renderDocuments();
   // If a day is selected, refresh its detail
   if(selectedDate){selectDay(selectedDate)}
 }
@@ -3061,6 +3092,22 @@ function initFirebase(){
 },function(err){
   console.warn("Tasks listener error:",err);
   updateLiveStatus("disconnected","Error: "+err.code);
+});
+
+      // Listen to documents collection
+      db.collection("users").doc(fbUid).collection("documents")
+.onSnapshot(function(snapshot){
+  var liveDocs=[];
+  snapshot.forEach(function(doc){
+    var d=doc.data();
+    d.id=doc.id;
+    liveDocs.push(d);
+  });
+  DATA.documents=liveDocs;
+  updateLastSync();
+  if(ACTIVE_TAB==="documents")renderDocuments();
+},function(err){
+  console.warn("Documents listener error:",err);
 });
 
       // Listen to settings (dayOverrides, activityTypes, viaticumRates)
@@ -3169,6 +3216,7 @@ function switchTab(tabId){
   if(tabId==='reportC')renderReportC();
   if(tabId==='reportD')renderReportD();
   if(tabId==='summary')renderSummary();
+  if(tabId==='documents')renderDocuments();
 }
 
 // ========== CALENDAR ==========
@@ -3852,6 +3900,114 @@ rows.push([idx===0?pp:'',idx===0?formatCRC(data.total):'',formatCRC(cost),fecha,
   if(y>170){doc.addPage();y=20;}
   addSemTable(sem2,'II Semestre (Julio — Diciembre)',y);
   doc.save('reporte_D_presupuesto.pdf');
+}
+
+// ========== DOCUMENTS ==========
+var DOC_TYPE_LABELS={teletrabajo:'Informes mensuales de teletrabajo',programacion_ejecucion:'Informes de programación y ejecución semanal',comprobantes:'Comprobantes'};
+var DOC_TYPE_ORDER=['teletrabajo','programacion_ejecucion','comprobantes'];
+var visibleDocIds=[];
+
+function fmtDocDate(iso){
+  if(!iso)return '—';
+  try{var d=new Date(iso.indexOf('T')>=0?iso:iso+'T00:00:00');return d.toLocaleDateString('es-CR',{day:'2-digit',month:'2-digit',year:'numeric'});}catch(e){return '—';}
+}
+
+function fmtSize(bytes){
+  if(!bytes)return '';
+  if(bytes<1024)return bytes+' B';
+  if(bytes<1048576)return (bytes/1024).toFixed(1)+' KB';
+  return (bytes/1048576).toFixed(1)+' MB';
+}
+
+function getFilteredDocs(){
+  var docs=(DATA.documents||[]).slice();
+  var from=document.getElementById('docSearchFrom')?.value||'';
+  var to=document.getElementById('docSearchTo')?.value||'';
+  if(from){docs=docs.filter(function(d){return(d.periodEnd||'')>=from;});}
+  if(to){docs=docs.filter(function(d){return(d.periodStart||'')<=to;});}
+  return docs;
+}
+
+function renderDocuments(){
+  var container=document.getElementById('documentsContent');
+  if(!container)return;
+  var docs=getFilteredDocs();
+  visibleDocIds=docs.map(function(d){return d.docUid;});
+
+  if(!DATA.documents||DATA.documents.length===0){
+    container.innerHTML='<div class="empty-state"><p>No hay documentos disponibles.</p></div>';
+    return;
+  }
+
+  if(docs.length===0){
+    container.innerHTML='<div class="empty-state"><p>No se encontraron documentos en el período seleccionado.</p></div>';
+    return;
+  }
+
+  var grouped={};
+  DOC_TYPE_ORDER.forEach(function(t){grouped[t]=[];});
+  docs.forEach(function(d){if(grouped[d.docType])grouped[d.docType].push(d);});
+  DOC_TYPE_ORDER.forEach(function(t){grouped[t].sort(function(a,b){return(a.periodStart||'').localeCompare(b.periodStart||'');});});
+
+  var html='';
+  DOC_TYPE_ORDER.forEach(function(type){
+    var list=grouped[type]||[];
+    var label=DOC_TYPE_LABELS[type]||type;
+    html+='<div style="margin-bottom:24px">';
+    html+='<h3 style="font-size:15px;font-weight:700;color:#2D6A4F;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid rgba(45,106,79,0.2);display:flex;align-items:center;gap:8px">';
+    html+='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+    html+=label+' <span style="font-size:11px;font-weight:400;color:#8a9bae;background:rgba(255,255,255,0.05);padding:2px 8px;border-radius:10px">'+list.length+'</span></h3>';
+
+    if(list.length===0){
+      html+='<p style="font-size:13px;color:#8a9bae;padding:12px;text-align:center">Sin documentos de este tipo.</p>';
+    }else{
+      html+='<table class="report-table"><thead><tr><th style="text-align:left">Documento</th><th>Período</th><th>Tamaño</th><th>Subido</th><th style="width:80px">Acción</th></tr></thead><tbody>';
+      list.forEach(function(d){
+        html+='<tr>';
+        html+='<td style="text-align:left;font-weight:500">'+(d.fileName||'documento.pdf')+'</td>';
+        html+='<td>'+fmtDocDate(d.periodStart)+' — '+fmtDocDate(d.periodEnd)+'</td>';
+        html+='<td>'+fmtSize(d.fileSize)+'</td>';
+        html+='<td>'+fmtDocDate(d.uploadedAt?d.uploadedAt.split('T')[0]:'')+'</td>';
+        html+='<td><a href="'+d.downloadURL+'" target="_blank" rel="noopener" download="'+(d.fileName||'documento.pdf')+'" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:4px;background:#22c55e;color:#0a1214;text-decoration:none;font-size:11px;font-weight:600" title="Descargar">';
+        html+='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+        html+='PDF</a></td>';
+        html+='</tr>';
+      });
+      html+='</tbody></table>';
+    }
+    html+='</div>';
+  });
+
+  container.innerHTML=html;
+}
+
+function filterDocuments(){renderDocuments();}
+function clearDocFilter(){
+  var f=document.getElementById('docSearchFrom');
+  var t=document.getElementById('docSearchTo');
+  if(f)f.value='';
+  if(t)t.value='';
+  renderDocuments();
+}
+
+function downloadAllVisible(){
+  var docs=(DATA.documents||[]).filter(function(d){return visibleDocIds.indexOf(d.docUid)>=0;});
+  if(docs.length===0){alert('No hay documentos para descargar.');return;}
+  if(!confirm('Se descargarán '+docs.length+' documento(s). ¿Continuar?'))return;
+  var delay=0;
+  docs.forEach(function(d){
+    setTimeout(function(){
+      var a=document.createElement('a');
+      a.href=d.downloadURL;
+      a.target='_blank';
+      a.rel='noopener';
+      a.download=d.fileName||'documento.pdf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    },delay);
+    delay+=500;
+  });
 }
 
 // ========== INIT ==========
@@ -4713,6 +4869,8 @@ const App = () => {
   const [isCasesModalOpen, setIsCasesModalOpen] = useState(false);
   const [batches, setBatches] = useState([]);
   const [isBatchesModalOpen, setIsBatchesModalOpen] = useState(false);
+  const [documents, setDocuments] = useState([]);
+  const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
   const [markers] = useState([...PAYMENTS_2026, ...HOLIDAYS_CR_2026, ...EFEMERIDES_2026, ...MOON_PHASES_2026]);
   const [user, setUser] = useState(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -4885,6 +5043,15 @@ const App = () => {
       setBatches(snapshot.docs.map(d => ({ ...d.data(), id: d.id })));
     });
 
+    // --- DOCUMENTOS: Listener ---
+    const docsQuery = query(collection(db, 'users', user.uid, 'documents'));
+    const unsubscribeDocuments = onSnapshot(docsQuery, (snapshot) => {
+      setDocuments(snapshot.docs.map(d => {
+        const data = d.data();
+        return sanitizeFirestore({ ...data, id: d.id });
+      }));
+    });
+
     // --- PAPELERA: Listener de tareas eliminadas ---
     const trashQuery = query(collection(db, 'users', user.uid, 'trash'));
     const unsubscribeTrash = onSnapshot(trashQuery, (snapshot) => { 
@@ -4934,6 +5101,7 @@ const App = () => {
       unsubscribeCases();
       unsubscribeCaseLinks();
       unsubscribeBatches();
+      unsubscribeDocuments();
       unsubscribeTrash();
       unsubscribeSettings();
     };
@@ -5132,6 +5300,69 @@ const App = () => {
     } catch (e) {
       console.error("Error deleting batch", e);
       markSyncError();
+    }
+  };
+
+  // --- DOCUMENTOS: CRUD ---
+  const uploadDocumentToDB = async (docType, periodStart, periodEnd, file) => {
+    if (!user) throw new Error('No user');
+    markSaving();
+    const docUid = Date.now().toString(36) + Math.random().toString(36).substr(2);
+    const storagePath = `users/${user.uid}/documents/${docUid}_${file.name}`;
+    const storage = getStorage();
+    const storageRef = ref(storage, storagePath);
+    try {
+      await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(storageRef);
+      const metadata = { docUid, docType, periodStart, periodEnd, fileName: file.name, storagePath, downloadURL, uploadedAt: new Date().toISOString(), fileSize: file.size };
+      const db = getFirestore();
+      await setDoc(doc(db, 'users', user.uid, 'documents', docUid), metadata);
+      markSaved();
+      return metadata;
+    } catch (e) {
+      console.error('Error uploading document:', e);
+      markSyncError();
+      throw e;
+    }
+  };
+
+  const deleteDocumentFromDB = async (docData) => {
+    if (!user) return;
+    markSaving();
+    try {
+      const storage = getStorage();
+      const storageRef = ref(storage, docData.storagePath);
+      await deleteObject(storageRef).catch(err => console.warn('Storage delete error (may already be gone):', err));
+      const db = getFirestore();
+      await deleteDoc(doc(db, 'users', user.uid, 'documents', docData.docUid));
+      markSaved();
+    } catch (e) {
+      console.error('Error deleting document:', e);
+      markSyncError();
+      throw e;
+    }
+  };
+
+  const replaceDocumentInDB = async (docData, newFile) => {
+    if (!user) throw new Error('No user');
+    markSaving();
+    try {
+      const storage = getStorage();
+      const oldRef = ref(storage, docData.storagePath);
+      await deleteObject(oldRef).catch(err => console.warn('Old file delete error:', err));
+      const newStoragePath = `users/${user.uid}/documents/${docData.docUid}_${newFile.name}`;
+      const newRef = ref(storage, newStoragePath);
+      await uploadBytes(newRef, newFile);
+      const downloadURL = await getDownloadURL(newRef);
+      const db = getFirestore();
+      await setDoc(doc(db, 'users', user.uid, 'documents', docData.docUid), {
+        ...docData, fileName: newFile.name, storagePath: newStoragePath, downloadURL, fileSize: newFile.size, uploadedAt: new Date().toISOString()
+      });
+      markSaved();
+    } catch (e) {
+      console.error('Error replacing document:', e);
+      markSyncError();
+      throw e;
     }
   };
 
@@ -5647,6 +5878,7 @@ const App = () => {
             <button className="hide-on-mobile" onClick={() => setShowWeekends(!showWeekends)} style={{padding:'6px',borderRadius:'6px',cursor:'pointer',border:`1px solid ${showWeekends?colors.success:colors.border}`,backgroundColor:colors.bgTertiary,color:showWeekends?colors.success:colors.textMuted}} title="Fines de Semana"><EyeOff size={16}/></button>
             <button onClick={() => setIsCasesModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.accent,borderRadius:'6px',position:'relative'}} title="Casos / Expedientes"><Briefcase size={18}/>{cases.length > 0 && <span style={{position:'absolute',top:'-2px',right:'-4px',backgroundColor:colors.accent,color:colors.bgPrimary,fontSize:'8px',fontWeight:'bold',borderRadius:'50%',minWidth:'14px',height:'14px',display:'flex',alignItems:'center',justifyContent:'center',padding:'0 2px'}}>{cases.length}</span>}</button>
             <button onClick={() => setIsBatchesModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px',position:'relative'}} title="Lotes">{<Layers size={18}/>}{batches.length > 0 && <span style={{position:'absolute',top:'-2px',right:'-4px',backgroundColor:colors.textMuted,color:colors.bgPrimary,fontSize:'8px',fontWeight:'bold',borderRadius:'50%',minWidth:'14px',height:'14px',display:'flex',alignItems:'center',justifyContent:'center',padding:'0 2px'}}>{batches.length}</span>}</button>
+            <button onClick={() => setIsDocumentsModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px',position:'relative'}} title="Documentos"><Upload size={18}/>{documents.length > 0 && <span style={{position:'absolute',top:'-2px',right:'-4px',backgroundColor:colors.accent,color:colors.bgPrimary,fontSize:'8px',fontWeight:'bold',borderRadius:'50%',minWidth:'14px',height:'14px',display:'flex',alignItems:'center',justifyContent:'center',padding:'0 2px'}}>{documents.length}</span>}</button>
             <button onClick={() => setIsReportsModalOpen(true)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px'}} title="Reportes"><FileText size={18}/></button>
             <button onClick={() => setIsDarkMode(!isDarkMode)} style={{padding:'6px',backgroundColor:'transparent',border:'none',cursor:'pointer',color:colors.textMuted,borderRadius:'6px'}} title={isDarkMode ? "Modo Claro" : "Modo Oscuro"}>{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
             <button onClick={() => { setSelectedDay(new Date()); setEditingTask(null); setIsTaskModalOpen(true); }} style={{padding:'8px 14px',backgroundColor:colors.success,color:colors.bgPrimary,borderRadius:'6px',border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px',fontWeight:'bold',fontSize:'13px', whiteSpace: 'nowrap'}}><Plus size={16}/>{isMobile ? '' : ' Nueva'}</button>
@@ -5892,6 +6124,7 @@ const App = () => {
       <ReportsModal isOpen={isReportsModalOpen} onClose={() => setIsReportsModalOpen(false)} tasks={tasks} markers={markers} dayOverrides={dayOverrides} colors={colors} onImportBackup={handleImportBackup} activityTypes={activityTypes} viaticumRates={viaticumRates} trashTasks={trashTasks} onExportBackup={exportBackup} onImportBackupJSON={importBackup} onUploadBackupToStorage={uploadBackupToStorage} onListStorageBackups={listStorageBackups} onRestoreFromStorage={restoreFromStorageBackup}/>
       <CasesModal isOpen={isCasesModalOpen} onClose={() => setIsCasesModalOpen(false)} cases={cases} onSaveCase={saveCaseToDB} onDeleteCase={deleteCaseFromDB} caseLinks={caseLinks} onSaveCaseLink={saveCaseLinkToDB} onDeleteCaseLink={deleteCaseLinkFromDB} colors={colors} holidays={holidayDates} tasks={tasks} Modal={Modal} />
       <BatchesModal isOpen={isBatchesModalOpen} onClose={() => setIsBatchesModalOpen(false)} batches={batches} cases={cases} tasks={tasks} onSaveBatch={saveBatchToDB} onDeleteBatch={deleteBatchFromDB} colors={colors} Modal={Modal} />
+      <DocumentsModal isOpen={isDocumentsModalOpen} onClose={() => setIsDocumentsModalOpen(false)} documents={documents} onUpload={uploadDocumentToDB} onDelete={deleteDocumentFromDB} onReplace={replaceDocumentInDB} colors={colors} isOffline={isOffline} />
       <ConfigModal isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} colors={colors} activityTypes={activityTypes} setActivityTypes={setActivityTypes} ppCodes={ppCodes} setPpCodes={setPpCodes} viaticumRates={viaticumRates} setViaticumRates={setViaticumRates} tasks={tasks} onUpdateTasks={batchUpdateTasks} monthlyBudgets={monthlyBudgets} setMonthlyBudgets={setMonthlyBudgets} isBudgetLocked={isBudgetLocked} setIsBudgetLocked={setIsBudgetLocked} lodgingRates={lodgingRates} setLodgingRates={setLodgingRates} isViaticosLocked={isViaticosLocked} setIsViaticosLocked={setIsViaticosLocked} isTypesLocked={isTypesLocked} setIsTypesLocked={setIsTypesLocked} isPPLocked={isPPLocked} setIsPPLocked={setIsPPLocked} />
       <ScheduleAlert task={scheduleAlert} onAction={handleScheduleAction} onClose={() => setScheduleAlert(null)} colors={colors} activityTypes={activityTypes}/>
       <DayModalityModal isOpen={isModalityModalOpen} onClose={() => setIsModalityModalOpen(false)} selectedDay={selectedDay} currentModality={getDayModality(toISODateString(selectedDay))} onSave={(mod) => saveDayOverrideToDB(toISODateString(selectedDay), mod)} colors={colors}/>
