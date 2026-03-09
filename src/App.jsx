@@ -79,7 +79,7 @@ const SUBTIPOS_RESOLUCION = ['Permiso Pequeño', 'Inventario Forestal', 'Certifi
 const DEFAULT_ACTIVITY_TYPES = [
   { id: 1, name: 'Redacción de Informe', color: '#2ECC71', subtypes: [...SUBTIPOS_FORESTALES, 'SICAF - PP', 'SIFAC - IF', 'SICAF - CO', 'SICAF - Informe técnico PyG', 'SICAF - Informe analista PyG', 'Informe de patio', 'Coordinación para entrega PyG'], fields: ['informe'], logistics: true },
   { id: 2, name: 'Redacción de Resolución', color: '#27AE60', subtypes: SUBTIPOS_RESOLUCION, fields: ['informe'] },
-  { id: 3, name: 'Inspección', color: '#E67E22', subtypes: [...SUBTIPOS_FORESTALES, 'Inventario de patio', 'Supervisión'], fields: ['informe', 'asistentes', 'lugar'], logistics: true },
+  { id: 3, name: 'Inspección', color: '#E67E22', subtypes: [...SUBTIPOS_FORESTALES, 'Inventario de patio', 'Supervisión'], fields: ['informe', 'asistentes'], logistics: true },
   { id: 4, name: 'Revisión de Correos', color: '#3498DB', subtypes: [], fields: [] },
   { id: 5, name: 'Comunicaciones', color: '#9B59B6', subtypes: ['Llamada telefónica', 'Mensaje de Whatsapp'], fields: ['nombre', 'cedula', 'tema'] },
   { id: 6, name: 'Revisión de Documentos', color: '#1ABC9C', subtypes: [], fields: ['informe'] },
@@ -1180,6 +1180,7 @@ const TaskFormModalContent = ({ isOpen, onClose, task, day, onSave, onDelete, on
      provincia: '',
      canton: '',
      distrito: '',
+     lugar: '',
      otrasSenas: '',
      enlaceUbicacion: ''
    });
@@ -1241,6 +1242,7 @@ const TaskFormModalContent = ({ isOpen, onClose, task, day, onSave, onDelete, on
            provincia: '',
            canton: '',
            distrito: '',
+           lugar: '',
            otrasSenas: '',
            enlaceUbicacion: ''
          });
@@ -1282,11 +1284,12 @@ const TaskFormModalContent = ({ isOpen, onClose, task, day, onSave, onDelete, on
       };
       
       // Update the lugar field with formatted location
-      if (locationData.provincia || locationData.canton || locationData.distrito || locationData.otrasSenas) {
+      if (locationData.provincia || locationData.canton || locationData.distrito || locationData.lugar || locationData.otrasSenas) {
         const lugarParts = [];
         if (locationData.provincia) lugarParts.push(locationData.provincia);
         if (locationData.canton) lugarParts.push(locationData.canton);
         if (locationData.distrito) lugarParts.push(locationData.distrito);
+        if (locationData.lugar) lugarParts.push(locationData.lugar);
         if (locationData.otrasSenas) lugarParts.push(locationData.otrasSenas);
         updatedFieldData.lugar = lugarParts.join(', ');
       }
@@ -1657,17 +1660,28 @@ const TaskFormModalContent = ({ isOpen, onClose, task, day, onSave, onDelete, on
                         ))}
                       </select>
                     </div>
-                    
+
+                    <div style={{marginBottom:'8px'}}>
+                      <label style={labelStyle}>Lugar</label>
+                      <input
+                        type="text"
+                        value={locationData.lugar || ''}
+                        onChange={e => handleLocationFieldChange('lugar', e.target.value)}
+                        style={{...inputStyle, padding:'6px'}}
+                        placeholder="Nombre del lugar específico..."
+                      />
+                    </div>
+
                     <div style={{marginBottom:'8px'}}>
                       <label style={labelStyle}>Otras señas</label>
-                      <textarea 
-                        value={locationData.otrasSenas} 
+                      <textarea
+                        value={locationData.otrasSenas}
                         onChange={e => handleLocationFieldChange('otrasSenas', e.target.value)}
                         style={{...inputStyle, padding:'6px', height:'60px'}}
                         placeholder="Detalles de la ubicación..."
                       />
                     </div>
-                    
+
                     <div>
                       <label style={labelStyle}>Enlace de ubicación (Waze o Maps)</label>
                       <div style={{display:'flex', gap:'4px', marginBottom:'4px'}}>
@@ -2102,24 +2116,26 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
       // Encabezado fila 1
       wsData.push([
         { v: 'Fecha', s: headerStyle },
-        { v: 'Lugar de la gira', s: headerStyle },
+        { v: 'Lugar', s: headerStyle },
         { v: 'Actividad', s: headerStyle },
+        { v: 'Expediente', s: headerStyle },
         { v: 'Acompañantes', s: headerStyle },
-        { v: 'Requiere Vehículo', s: headerStyle },
+        { v: 'Vehículo', s: headerStyle },
         { v: '', s: headerStyle },
-        { v: 'Doble Tracción', s: headerStyle },
+        { v: 'Doble T.', s: headerStyle },
         { v: '', s: headerStyle },
-        { v: 'Tarjeta de ruedo', s: headerStyle },
+        { v: 'Tarj. ruedo', s: headerStyle },
         { v: '', s: headerStyle },
         { v: 'Viáticos', s: headerStyle },
         { v: '', s: headerStyle },
         { v: '', s: headerStyle },
         { v: '', s: headerStyle },
-        { v: 'Código PP', s: headerStyle }
+        { v: 'Cód. PP', s: headerStyle }
       ]);
-      
+
       // Encabezado fila 2
       wsData.push([
+        { v: '', s: headerStyle },
         { v: '', s: headerStyle },
         { v: '', s: headerStyle },
         { v: '', s: headerStyle },
@@ -2136,18 +2152,19 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
         { v: 'H****', s: headerStyle },
         { v: '', s: headerStyle }
       ]);
-      
+
       // Merges para encabezados
       merges = [
         { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },   // Fecha
         { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },   // Lugar
         { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } },   // Actividad
-        { s: { r: 0, c: 3 }, e: { r: 1, c: 3 } },   // Acompañantes
-        { s: { r: 0, c: 4 }, e: { r: 0, c: 5 } },   // Requiere Vehículo
-        { s: { r: 0, c: 6 }, e: { r: 0, c: 7 } },   // Doble Tracción
-        { s: { r: 0, c: 8 }, e: { r: 0, c: 9 } },   // Tarjeta de ruedo
-        { s: { r: 0, c: 10 }, e: { r: 0, c: 13 } }, // Viáticos
-        { s: { r: 0, c: 14 }, e: { r: 1, c: 14 } }  // Código PP
+        { s: { r: 0, c: 3 }, e: { r: 1, c: 3 } },   // Expediente
+        { s: { r: 0, c: 4 }, e: { r: 1, c: 4 } },   // Acompañantes
+        { s: { r: 0, c: 5 }, e: { r: 0, c: 6 } },   // Vehículo
+        { s: { r: 0, c: 7 }, e: { r: 0, c: 8 } },   // Doble T.
+        { s: { r: 0, c: 9 }, e: { r: 0, c: 10 } },   // Tarj. ruedo
+        { s: { r: 0, c: 11 }, e: { r: 0, c: 14 } }, // Viáticos
+        { s: { r: 0, c: 15 }, e: { r: 1, c: 15 } }  // Cód. PP
       ];
       
       // Agrupar datos por fecha
@@ -2199,15 +2216,16 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
         if (dayModality === 'telework') {
           lugarDelDia = 'Teletrabajo';
         } else {
-          // Buscar la primera inspección del día (typeId 3 = Inspección)
           const primeraInspeccion = tasksInDate.find(tt => tt.typeId === 3 || tt.activityTypeName === 'Inspección');
           if (primeraInspeccion) {
-            // Usar el cantón de la ubicación estructurada, o extraerlo del campo lugar
-            const cantonFromLocation = primeraInspeccion.fieldData?.location?.canton;
-            if (cantonFromLocation) {
-              lugarDelDia = cantonFromLocation;
+            const loc = primeraInspeccion.fieldData?.location;
+            if (loc?.lugar) {
+              lugarDelDia = loc.lugar;
+            } else if (loc?.distrito) {
+              lugarDelDia = loc.distrito + (loc.canton ? ', ' + loc.canton : '');
+            } else if (loc?.canton) {
+              lugarDelDia = loc.canton;
             } else if (primeraInspeccion.fieldData?.lugar) {
-              // fieldData.lugar tiene formato "Provincia, Cantón, Distrito, OtrasSenas"
               const partes = primeraInspeccion.fieldData.lugar.split(',').map(s => s.trim());
               lugarDelDia = partes.length >= 2 ? partes[1] : primeraInspeccion.fieldData.lugar;
             } else {
@@ -2218,21 +2236,26 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
           }
         }
 
+        // Short date format for Excel
+        const dObj = new Date(tasksInDate[0].start);
+        const shortDateStr = `${dObj.getDate()}/${dObj.getMonth()+1}/${String(dObj.getFullYear()).slice(-2)}`;
+
         tasksInDate.forEach((t, idx) => {
           const isFirst = idx === 0;
-          
+
           // Tipos que no llevan lugar de gira ni código PP (ausencias/personales)
-          const noLugarNoPPTypes = [14, 15, 16, 17, 19]; // Vacaciones, Lic.Ocasional, Cita Médica, Incapacidad, Receso
+          const noLugarNoPPTypes = [14, 15, 16, 17, 19];
           const isNoLugar = noLugarNoPPTypes.includes(parseInt(t.typeId));
           const lugar = isNoLugar ? '' : lugarDelDia;
           let actividad = t.activityTypeName;
           if (t.subtipo) actividad += ` - ${t.subtipo}`;
-          if (t.fieldData?.expediente) actividad += ` (Exp: ${t.fieldData.expediente})`;
-          
+          const expediente = t.fieldData?.expediente || '';
+
           const row = [
-            isFirst ? { v: dateStr, s: cellStyleCenter } : { v: '', s: cellStyleCenter },
+            isFirst ? { v: shortDateStr, s: cellStyleCenter } : { v: '', s: cellStyleCenter },
             { v: lugar, s: cellStyleLeft },
             { v: actividad, s: cellStyleLeft },
+            { v: expediente, s: cellStyleLeft },
             (acompAllSame && !isFirst) ? { v: '', s: cellStyleLeft } : { v: t.fieldData?.asistentes || '', s: cellStyleLeft },
             isFirst ? { v: anyReqVeh ? 'X' : '', s: cellStyleCenter } : { v: '', s: cellStyleCenter },
             isFirst ? { v: !anyReqVeh ? 'X' : '', s: cellStyleCenter } : { v: '', s: cellStyleCenter },
@@ -2255,53 +2278,54 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
         if (rowCount > 1) {
           // Fecha
           merges.push({ s: { r: startRow, c: 0 }, e: { r: startRow + rowCount - 1, c: 0 } });
-          // Requiere Vehículo Sí
-          merges.push({ s: { r: startRow, c: 4 }, e: { r: startRow + rowCount - 1, c: 4 } });
-          // Requiere Vehículo No
+          // Vehículo Sí
           merges.push({ s: { r: startRow, c: 5 }, e: { r: startRow + rowCount - 1, c: 5 } });
-          // Doble Tracción Sí
+          // Vehículo No
           merges.push({ s: { r: startRow, c: 6 }, e: { r: startRow + rowCount - 1, c: 6 } });
-          // Doble Tracción No
+          // Doble T. Sí
           merges.push({ s: { r: startRow, c: 7 }, e: { r: startRow + rowCount - 1, c: 7 } });
-          // Tarjeta de ruedo Sí
+          // Doble T. No
           merges.push({ s: { r: startRow, c: 8 }, e: { r: startRow + rowCount - 1, c: 8 } });
-          // Tarjeta de ruedo No
+          // Tarj. ruedo Sí
           merges.push({ s: { r: startRow, c: 9 }, e: { r: startRow + rowCount - 1, c: 9 } });
-          // Viáticos D
+          // Tarj. ruedo No
           merges.push({ s: { r: startRow, c: 10 }, e: { r: startRow + rowCount - 1, c: 10 } });
-          // Viáticos A
+          // Viáticos D
           merges.push({ s: { r: startRow, c: 11 }, e: { r: startRow + rowCount - 1, c: 11 } });
-          // Viáticos C
+          // Viáticos A
           merges.push({ s: { r: startRow, c: 12 }, e: { r: startRow + rowCount - 1, c: 12 } });
-          // Viáticos H
+          // Viáticos C
           merges.push({ s: { r: startRow, c: 13 }, e: { r: startRow + rowCount - 1, c: 13 } });
+          // Viáticos H
+          merges.push({ s: { r: startRow, c: 14 }, e: { r: startRow + rowCount - 1, c: 14 } });
           // Acompañantes (si todos iguales)
           if (acompAllSame) {
-            merges.push({ s: { r: startRow, c: 3 }, e: { r: startRow + rowCount - 1, c: 3 } });
+            merges.push({ s: { r: startRow, c: 4 }, e: { r: startRow + rowCount - 1, c: 4 } });
           }
           // Código PP (si todos iguales)
           if (ppAllSame) {
-            merges.push({ s: { r: startRow, c: 14 }, e: { r: startRow + rowCount - 1, c: 14 } });
+            merges.push({ s: { r: startRow, c: 15 }, e: { r: startRow + rowCount - 1, c: 15 } });
           }
         }
       });
       
       colWidths = [
-        { wch: 12 }, // Fecha
-        { wch: 15 }, // Lugar
-        { wch: 40 }, // Actividad
-        { wch: 18 }, // Acompañantes
-        { wch: 5 },  // Veh Sí
-        { wch: 5 },  // Veh No
-        { wch: 5 },  // Doble Sí
-        { wch: 5 },  // Doble No
-        { wch: 5 },  // Tarj Sí
-        { wch: 5 },  // Tarj No
-        { wch: 5 },  // D
-        { wch: 5 },  // A
-        { wch: 5 },  // C
-        { wch: 5 },  // H
-        { wch: 12 }  // Código PP
+        { wch: 8 },  // Fecha
+        { wch: 14 }, // Lugar
+        { wch: 30 }, // Actividad
+        { wch: 12 }, // Expediente
+        { wch: 16 }, // Acompañantes
+        { wch: 4 },  // Veh Sí
+        { wch: 4 },  // Veh No
+        { wch: 4 },  // Doble Sí
+        { wch: 4 },  // Doble No
+        { wch: 4 },  // Tarj Sí
+        { wch: 4 },  // Tarj No
+        { wch: 4 },  // D
+        { wch: 4 },  // A
+        { wch: 4 },  // C
+        { wch: 4 },  // H
+        { wch: 10 }  // Cód. PP
       ];
       
       fileName = 'reporte_programadas';
@@ -3185,8 +3209,10 @@ function getLugarDelDia(dateStr, tasksInDate){
   if(mod==='telework') return 'Teletrabajo';
   const insp = tasksInDate.find(t=>t.typeId===3||t.activityTypeName==='Inspección');
   if(insp){
-    const cl = insp.fieldData?.location?.canton;
-    if(cl) return cl;
+    const loc = insp.fieldData?.location;
+    if(loc?.lugar) return loc.lugar;
+    if(loc?.distrito) return loc.distrito + (loc.canton ? ', ' + loc.canton : '');
+    if(loc?.canton) return loc.canton;
     if(insp.fieldData?.lugar){
       const p = insp.fieldData.lugar.split(',').map(s=>s.trim());
       return p.length>=2?p[1]:insp.fieldData.lugar;
@@ -3354,7 +3380,7 @@ function selectDay(iso){
     content.innerHTML='<div class="empty-state"><p>No hay actividades programadas para este día.</p></div>';
   } else {
     const lugar=getLugarDelDia(iso,tasks);
-    let html='<div style="margin-bottom:14px;padding:12px 16px;background:#F4FAF7;border-radius:4px;font-size:14px;border:1px solid #B7E4C7"><strong style="color:#1B4332">Lugar de la gira:</strong> <span style="color:#2D6A4F;font-weight:600">'+lugar+'</span></div>';
+    let html='<div style="margin-bottom:14px;padding:12px 16px;background:#F4FAF7;border-radius:4px;font-size:14px;border:1px solid #B7E4C7"><strong style="color:#1B4332">Lugar:</strong> <span style="color:#2D6A4F;font-weight:600">'+lugar+'</span></div>';
     tasks.forEach(t=>{
       const worked=getTotalWorked(t);
       html+='<div class="day-detail">';
@@ -3484,12 +3510,13 @@ function renderReportB(){
   const noLugarTypes=[14,15,16,17,19];
   const grouped={};
   scheduled.forEach(t=>{
-    const key=new Date(t.start).toLocaleDateString('es-CR');
+    const d=new Date(t.start);
+    const key=d.getDate()+'/'+(d.getMonth()+1)+'/'+String(d.getFullYear()).slice(-2);
     if(!grouped[key])grouped[key]=[];
     grouped[key].push(t);
   });
 
-  let html='<table class="report-table"><thead><tr><th rowspan="2">Fecha</th><th rowspan="2">Lugar de la gira</th><th rowspan="2">Actividad</th><th rowspan="2">Acompañantes</th><th colspan="2">Req. Vehículo</th><th colspan="2">Doble Tracción</th><th colspan="2">Tarj. Ruedo</th><th colspan="4">Viáticos</th><th rowspan="2">Cód. PP</th></tr><tr><th>Sí</th><th>No</th><th>Sí</th><th>No</th><th>Sí</th><th>No</th><th>D</th><th>A</th><th>C</th><th>H</th></tr></thead><tbody>';
+  let html='<table class="report-table"><thead><tr><th rowspan="2">Fecha</th><th rowspan="2">Lugar</th><th rowspan="2">Actividad</th><th rowspan="2">Expediente</th><th rowspan="2">Acompañantes</th><th colspan="2">Vehículo</th><th colspan="2">Doble T.</th><th colspan="2">Tarj. Ruedo</th><th colspan="4">Viáticos</th><th rowspan="2">Cód. PP</th></tr><tr><th>Sí</th><th>No</th><th>Sí</th><th>No</th><th>Sí</th><th>No</th><th>D</th><th>A</th><th>C</th><th>H</th></tr></thead><tbody>';
 
   const entries=Object.entries(grouped).sort((a,b)=>new Date(a[1][0].start)-new Date(b[1][0].start));
   entries.forEach(([dateStr,tasksInDate])=>{
@@ -3508,10 +3535,12 @@ function renderReportB(){
       const isFirst=idx===0;
       const isNoLugar=noLugarTypes.includes(parseInt(t.typeId));
       const act=(t.activityTypeName||'')+(t.subtipo?' - '+t.subtipo:'');
+      const exp=t.fieldData?.expediente||'';
       html+='<tr>';
       if(isFirst)html+='<td rowspan="'+rc+'">'+dateStr+'</td>';
       html+='<td style="text-align:left">'+(isNoLugar?'':lugarDia)+'</td>';
       html+='<td style="text-align:left">'+act+'</td>';
+      html+='<td>'+exp+'</td>';
       html+='<td>'+(t.fieldData?.asistentes||'')+'</td>';
       if(isFirst){
 html+='<td rowspan="'+rc+'">'+(anyVeh?'X':'')+'</td>';
@@ -4141,15 +4170,16 @@ CLOSE_SCRIPT_TAG
                  <table style={{width:'100%',borderCollapse:'collapse',border:`1px solid ${colors.border}`}}>
                     <thead>
                       <tr>
-                        <th rowSpan="2" style={{...thStyle,minWidth:'80px'}}>Fecha</th>
-                        <th rowSpan="2" style={{...thStyle,minWidth:'100px'}}>Lugar de la gira</th>
-                        <th rowSpan="2" style={{...thStyle,minWidth:'180px'}}>Actividad</th>
-                        <th rowSpan="2" style={{...thStyle,minWidth:'100px'}}>Acompañantes</th>
-                        <th colSpan="2" style={{...thStyle}}>Requiere Vehículo</th>
-                        <th colSpan="2" style={{...thStyle}}>Doble Tracción</th>
-                        <th colSpan="2" style={{...thStyle}}>Tarjeta de ruedo</th>
+                        <th rowSpan="2" style={{...thStyle,minWidth:'60px'}}>Fecha</th>
+                        <th rowSpan="2" style={{...thStyle,minWidth:'70px'}}>Lugar</th>
+                        <th rowSpan="2" style={{...thStyle,minWidth:'120px'}}>Actividad</th>
+                        <th rowSpan="2" style={{...thStyle,minWidth:'60px'}}>Expediente</th>
+                        <th rowSpan="2" style={{...thStyle,minWidth:'80px'}}>Acompañantes</th>
+                        <th colSpan="2" style={{...thStyle}}>Vehículo</th>
+                        <th colSpan="2" style={{...thStyle}}>Doble T.</th>
+                        <th colSpan="2" style={{...thStyle}}>Tarj. ruedo</th>
                         <th colSpan="4" style={{...thStyle}}>Viáticos</th>
-                        <th rowSpan="2" style={{...thStyle,minWidth:'80px'}}>Código PP</th>
+                        <th rowSpan="2" style={{...thStyle,minWidth:'60px'}}>Cód. PP</th>
                       </tr>
                       <tr>
                         <th style={{...thStyle,fontSize:'9px'}}>Sí</th>
@@ -4166,12 +4196,13 @@ CLOSE_SCRIPT_TAG
                     </thead>
                     <tbody>
                         {reportData.scheduled.length === 0 ? (
-                            <tr><td colSpan="15" style={{padding:'16px',textAlign:'center',color:colors.textMuted,fontStyle:'italic'}}>No hay programación futura en este periodo.</td></tr>
+                            <tr><td colSpan="16" style={{padding:'16px',textAlign:'center',color:colors.textMuted,fontStyle:'italic'}}>No hay programación futura en este periodo.</td></tr>
                         ) : (
                             (() => {
                               const groupedByDate = {};
                               reportData.scheduled.forEach((t, index) => {
-                                const dateStr = new Date(t.start).toLocaleDateString('es-CR');
+                                const d = new Date(t.start);
+                                const dateStr = `${d.getDate()}/${d.getMonth()+1}/${String(d.getFullYear()).slice(-2)}`;
                                 if (!groupedByDate[dateStr]) groupedByDate[dateStr] = [];
                                 groupedByDate[dateStr].push({ ...t, __origIndex: index });
                               });
@@ -4250,9 +4281,13 @@ CLOSE_SCRIPT_TAG
                                 } else {
                                   const primeraInspeccionHTML = tasksInDate.find(tt => tt.typeId === 3 || tt.activityTypeName === 'Inspección');
                                   if (primeraInspeccionHTML) {
-                                    const cantonFromLoc = primeraInspeccionHTML.fieldData?.location?.canton;
-                                    if (cantonFromLoc) {
-                                      lugarDelDiaHTML = cantonFromLoc;
+                                    const loc = primeraInspeccionHTML.fieldData?.location;
+                                    if (loc?.lugar) {
+                                      lugarDelDiaHTML = loc.lugar;
+                                    } else if (loc?.distrito) {
+                                      lugarDelDiaHTML = loc.distrito + (loc.canton ? ', ' + loc.canton : '');
+                                    } else if (loc?.canton) {
+                                      lugarDelDiaHTML = loc.canton;
                                     } else if (primeraInspeccionHTML.fieldData?.lugar) {
                                       const partesHTML = primeraInspeccionHTML.fieldData.lugar.split(',').map(s => s.trim());
                                       lugarDelDiaHTML = partesHTML.length >= 2 ? partesHTML[1] : primeraInspeccionHTML.fieldData.lugar;
@@ -4272,6 +4307,7 @@ CLOSE_SCRIPT_TAG
                                   const isNoLugarHTML = noLugarNoPPTypesHTML.includes(parseInt(t.typeId));
                                   const lugar = isNoLugarHTML ? '' : lugarDelDiaHTML;
                                   const actividad = `${t.activityTypeName}${t.subtipo ? ' - ' + t.subtipo : ''}`;
+                                  const expediente = t.fieldData?.expediente || '';
                                   const acomp = t.fieldData?.asistentes || '';
 
                                   return (
@@ -4282,6 +4318,7 @@ CLOSE_SCRIPT_TAG
 
                                       <td style={tdStyle}>{lugar}</td>
                                       <td style={tdStyle}>{actividad}</td>
+                                      <td style={tdStyle}>{expediente}</td>
                                       {acompanantesAllSame ? (
                                         isFirstInGroup && (
                                           <td style={tdStyle} rowSpan={rowCount}>{acomp}</td>
@@ -4679,6 +4716,129 @@ const TaskFormModal = (props) => {
   return <TaskFormModalContent {...props} />;
 };
 
+// --- GESTIÓN DE ACTIVIDADES CÍCLICAS ---
+const RecurringActivitiesModal = ({ isOpen, onClose, tasks, onDeleteTask, colors, activityTypes }) => {
+  const [confirmDeleteSeries, setConfirmDeleteSeries] = useState(null);
+  const [confirmDeleteFuture, setConfirmDeleteFuture] = useState(false);
+
+  if (!isOpen) return null;
+
+  // Group tasks by seriesId to find recurring series
+  const seriesMap = {};
+  tasks.forEach(t => {
+    if (t.seriesId) {
+      if (!seriesMap[t.seriesId]) seriesMap[t.seriesId] = [];
+      seriesMap[t.seriesId].push(t);
+    } else if (t.repeat && t.repeat.type !== 'none') {
+      const sid = t.id;
+      if (!seriesMap[sid]) seriesMap[sid] = [];
+      seriesMap[sid].push(t);
+    }
+  });
+
+  // Only show series with more than 1 task (actual recurring)
+  const recurringSeries = Object.entries(seriesMap)
+    .filter(([, arr]) => arr.length > 1)
+    .map(([seriesId, arr]) => {
+      arr.sort((a, b) => new Date(a.start) - new Date(b.start));
+      const first = arr[0];
+      const typeInfo = activityTypes.find(at => at.id === parseInt(first.typeId));
+      return {
+        seriesId,
+        name: first.activityTypeName + (first.subtipo ? ' - ' + first.subtipo : ''),
+        color: typeInfo?.color || '#888',
+        count: arr.length,
+        firstDate: first.start,
+        lastDate: arr[arr.length - 1].start,
+        tasks: arr
+      };
+    })
+    .sort((a, b) => new Date(a.firstDate) - new Date(b.firstDate));
+
+  // Tasks from May 2026 onwards
+  const may2026 = new Date(2026, 4, 1); // May is month index 4
+  const futureTasks = tasks.filter(t => new Date(t.start) >= may2026 && t.status !== 'completed');
+
+  const handleDeleteSeries = (seriesId, seriesTasks) => {
+    seriesTasks.forEach(t => onDeleteTask(t.id));
+    setConfirmDeleteSeries(null);
+  };
+
+  const handleDeleteFutureTasks = () => {
+    futureTasks.forEach(t => onDeleteTask(t.id));
+    setConfirmDeleteFuture(false);
+  };
+
+  const fmtDate = (d) => {
+    const dt = new Date(d);
+    return `${dt.getDate()}/${dt.getMonth()+1}/${String(dt.getFullYear()).slice(-2)}`;
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={() => { onClose(); setConfirmDeleteSeries(null); setConfirmDeleteFuture(false); }} title="Actividades Cíclicas" size="lg" colors={colors}>
+      <div style={{color:colors.textSecondary}}>
+        {/* Bulk delete May 2026+ */}
+        <div style={{padding:'12px', backgroundColor:colors.bgTertiary, borderRadius:'8px', marginBottom:'16px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+          <div>
+            <div style={{fontSize:'13px', fontWeight:'bold', color:colors.textPrimary}}>Actividades desde mayo 2026</div>
+            <div style={{fontSize:'11px', color:colors.textMuted}}>{futureTasks.length} actividades pendientes encontradas</div>
+          </div>
+          {!confirmDeleteFuture ? (
+            <button
+              onClick={() => setConfirmDeleteFuture(true)}
+              disabled={futureTasks.length === 0}
+              style={{padding:'6px 12px', backgroundColor:futureTasks.length > 0 ? colors.danger : colors.bgSecondary, color:futureTasks.length > 0 ? 'white' : colors.textMuted, border:'none', borderRadius:'6px', cursor:futureTasks.length > 0 ? 'pointer' : 'default', fontSize:'11px', fontWeight:'bold', display:'flex', alignItems:'center', gap:'4px'}}
+            >
+              <Trash2 size={12}/> Eliminar todas
+            </button>
+          ) : (
+            <div style={{display:'flex', gap:'4px'}}>
+              <button onClick={handleDeleteFutureTasks} style={{padding:'6px 12px', backgroundColor:colors.danger, color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'11px', fontWeight:'bold'}}>Confirmar</button>
+              <button onClick={() => setConfirmDeleteFuture(false)} style={{padding:'6px 12px', backgroundColor:colors.bgSecondary, color:colors.textMuted, border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'11px'}}>Cancelar</button>
+            </div>
+          )}
+        </div>
+
+        {/* Recurring series list */}
+        {recurringSeries.length === 0 ? (
+          <div style={{textAlign:'center', padding:'30px 20px'}}>
+            <Repeat size={40} style={{color:colors.textMuted, marginBottom:'12px', opacity:0.4}}/>
+            <p style={{fontSize:'14px', color:colors.textMuted}}>No hay actividades cíclicas</p>
+          </div>
+        ) : (
+          <div style={{display:'flex', flexDirection:'column', gap:'8px'}}>
+            <div style={{fontSize:'11px', color:colors.textMuted, fontWeight:'bold', textTransform:'uppercase', marginBottom:'4px'}}>Series recurrentes ({recurringSeries.length})</div>
+            {recurringSeries.map(s => (
+              <div key={s.seriesId} style={{padding:'10px 12px', backgroundColor:colors.bgPrimary, borderRadius:'8px', border:`1px solid ${colors.border}`, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <div style={{flex:1}}>
+                  <div style={{display:'flex', alignItems:'center', gap:'8px', marginBottom:'4px'}}>
+                    <div style={{width:'10px', height:'10px', borderRadius:'50%', backgroundColor:s.color}}></div>
+                    <span style={{fontSize:'13px', fontWeight:'600', color:colors.textPrimary}}>{s.name}</span>
+                    <span style={{fontSize:'10px', padding:'2px 6px', backgroundColor:colors.bgTertiary, borderRadius:'10px', color:colors.textMuted}}>{s.count} tareas</span>
+                  </div>
+                  <div style={{fontSize:'11px', color:colors.textMuted}}>
+                    {fmtDate(s.firstDate)} — {fmtDate(s.lastDate)}
+                  </div>
+                </div>
+                {confirmDeleteSeries === s.seriesId ? (
+                  <div style={{display:'flex', gap:'4px'}}>
+                    <button onClick={() => handleDeleteSeries(s.seriesId, s.tasks)} style={{padding:'4px 10px', backgroundColor:colors.danger, color:'white', border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'11px', fontWeight:'bold'}}>Confirmar</button>
+                    <button onClick={() => setConfirmDeleteSeries(null)} style={{padding:'4px 10px', backgroundColor:colors.bgTertiary, color:colors.textMuted, border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'11px'}}>Cancelar</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setConfirmDeleteSeries(s.seriesId)} style={{padding:'4px 10px', backgroundColor:`${colors.danger}22`, color:colors.danger, border:'none', borderRadius:'4px', cursor:'pointer', fontSize:'11px', display:'flex', alignItems:'center', gap:'4px'}}>
+                    <Trash2 size={12}/> Eliminar serie
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+};
+
 // --- PAPELERA DE ACTIVIDADES ---
 const TrashModal = ({ isOpen, onClose, trashTasks, onRestore, onPermanentDelete, onEmptyTrash, colors, activityTypes }) => {
   const [selectedTrashItem, setSelectedTrashItem] = useState(null);
@@ -4864,6 +5024,7 @@ const App = () => {
   const [tasks, setTasks] = useState([]);
   const [trashTasks, setTrashTasks] = useState([]);
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
+  const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
   const [cases, setCases] = useState([]);
   const [caseLinks, setCaseLinks] = useState([]);
   const [isCasesModalOpen, setIsCasesModalOpen] = useState(false);
@@ -5867,6 +6028,9 @@ const App = () => {
             {/* SETTINGS BUTTON */}
             <button onClick={() => setIsConfigModalOpen(true)} style={{padding:'6px',borderRadius:'6px',cursor:'pointer',border:'none',backgroundColor:colors.bgTertiary,color:colors.textMuted}} title="Configuración"><Settings size={16}/></button>
 
+            {/* RECURRING ACTIVITIES BUTTON */}
+            <button className="hide-on-mobile" onClick={() => setIsRecurringModalOpen(true)} style={{padding:'6px',borderRadius:'6px',cursor:'pointer',border:'none',backgroundColor:colors.bgTertiary,color:colors.textMuted}} title="Actividades Cíclicas"><Repeat size={16}/></button>
+
             {/* TRASH BUTTON */}
             <button className="hide-on-mobile" onClick={() => setIsTrashModalOpen(true)} style={{padding:'6px',borderRadius:'6px',cursor:'pointer',border:'none',backgroundColor:trashTasks.length > 0 ? `${colors.warning}22` : colors.bgTertiary,color:trashTasks.length > 0 ? colors.warning : colors.textMuted, position:'relative'}} title="Papelera">
               <Trash2 size={16}/>
@@ -6128,6 +6292,7 @@ const App = () => {
       <ConfigModal isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} colors={colors} activityTypes={activityTypes} setActivityTypes={setActivityTypes} ppCodes={ppCodes} setPpCodes={setPpCodes} viaticumRates={viaticumRates} setViaticumRates={setViaticumRates} tasks={tasks} onUpdateTasks={batchUpdateTasks} monthlyBudgets={monthlyBudgets} setMonthlyBudgets={setMonthlyBudgets} isBudgetLocked={isBudgetLocked} setIsBudgetLocked={setIsBudgetLocked} lodgingRates={lodgingRates} setLodgingRates={setLodgingRates} isViaticosLocked={isViaticosLocked} setIsViaticosLocked={setIsViaticosLocked} isTypesLocked={isTypesLocked} setIsTypesLocked={setIsTypesLocked} isPPLocked={isPPLocked} setIsPPLocked={setIsPPLocked} />
       <ScheduleAlert task={scheduleAlert} onAction={handleScheduleAction} onClose={() => setScheduleAlert(null)} colors={colors} activityTypes={activityTypes}/>
       <DayModalityModal isOpen={isModalityModalOpen} onClose={() => setIsModalityModalOpen(false)} selectedDay={selectedDay} currentModality={getDayModality(toISODateString(selectedDay))} onSave={(mod) => saveDayOverrideToDB(toISODateString(selectedDay), mod)} colors={colors}/>
+      <RecurringActivitiesModal isOpen={isRecurringModalOpen} onClose={() => setIsRecurringModalOpen(false)} tasks={tasks} onDeleteTask={moveTaskToTrash} colors={colors} activityTypes={activityTypes}/>
       <TrashModal isOpen={isTrashModalOpen} onClose={() => setIsTrashModalOpen(false)} trashTasks={trashTasks} onRestore={restoreTaskFromTrash} onPermanentDelete={permanentDeleteFromTrash} onEmptyTrash={emptyTrash} colors={colors} activityTypes={activityTypes}/>
       
       {showResumePrompt && pausedByNewTask && ( /* ... existing resume prompt ... */ null )}
