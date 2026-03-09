@@ -5042,6 +5042,7 @@ const App = () => {
   const [syncStatus, setSyncStatus] = useState('idle'); // 'idle', 'saving', 'saved', 'error'
   const [lastSyncTime, setLastSyncTime] = useState(null);
   const syncTimerRef = useRef(null);
+  const settingsFromFirestoreRef = useRef(true); // flag to skip save-back on initial load
 
   // --- TRACKING POR TAREA (estilo WhatsApp) ---
   // taskSyncMap: {taskId: {status: 'synced'|'saving'|'error', at: Date}}
@@ -5232,6 +5233,7 @@ const App = () => {
     const unsubscribeSettings = onSnapshot(settingsRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
+            settingsFromFirestoreRef.current = true; // prevent save-back loop
             setDayOverrides(data.overrides || {});
             setResumeTaskId(data.resumeTaskId || null);
             if(data.activityTypes) {
@@ -5268,9 +5270,13 @@ const App = () => {
     };
   }, [user]);
 
-  // Guardar Configs cuando cambian
+  // Guardar Configs cuando cambian (skip if change came from Firestore snapshot)
   useEffect(() => {
       if(!user) return;
+      if (settingsFromFirestoreRef.current) {
+        settingsFromFirestoreRef.current = false;
+        return;
+      }
       markSaving();
       const db = getFirestore();
       const settingsRef = doc(db, 'users', user.uid, 'data', 'calendar_settings');
