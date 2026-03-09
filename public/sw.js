@@ -1,4 +1,4 @@
-const APP_VERSION = '2026.03.01.2';
+const APP_VERSION = '2026.03.09.1';
 const CACHE_NAME = `calendario-sinac-${APP_VERSION}`;
 
 const ASSETS_TO_CACHE = [
@@ -58,7 +58,7 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('message', event => {
-  if (event.data === 'GET_VERSION') {
+  if (event.data === 'GET_VERSION' && event.ports && event.ports[0]) {
     event.ports[0].postMessage({ version: APP_VERSION });
   }
 });
@@ -77,8 +77,9 @@ self.addEventListener('fetch', event => {
       fetch(event.request)
         .then(response => {
           if (response && response.status === 200 && response.type === 'basic') {
+            const responseToCache = response.clone();
             caches.open(CACHE_NAME).then(cache => {
-              cache.put(event.request, response.clone());
+              cache.put(event.request, responseToCache);
             });
           }
           return response;
