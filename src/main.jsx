@@ -12,6 +12,8 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').then(reg => {
       console.log('SW registrado:', reg.scope);
       reg.update();
+      // Check for SW updates every 60 seconds (helps installed PWAs pick up changes)
+      setInterval(() => reg.update(), 60 * 1000);
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
         if (!newWorker) return;
