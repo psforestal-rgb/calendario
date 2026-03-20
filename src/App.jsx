@@ -6,7 +6,7 @@ import {
   Sun, Star, Repeat, GripVertical, Search, Car, CreditCard, Database, EyeOff,
   Moon, Wifi, WifiOff, Upload, Download, ArrowRightCircle, Save, CalendarPlus,
   DollarSign, Lock, Unlock, TrendingUp, AlertCircle, PieChart, BarChart3, MapPin,
-  User, Phone, Map, ExternalLink, Copy, RefreshCw, CheckCheck, Briefcase, Layers
+  User, Phone, Map, ExternalLink, Copy, RefreshCw, CheckCheck, Briefcase, Layers, RotateCcw
 } from 'lucide-react';
 
 import XLSX from 'xlsx-js-style';
@@ -1474,6 +1474,9 @@ const TaskFormModalContent = ({ isOpen, onClose, task, day, onSave, onDelete, on
                     <button onClick={() => document.getElementById('start-date-input')?.focus()} style={{padding:'8px 12px', borderRadius:'6px', fontSize:'12px', backgroundColor:colors.bgTertiary, color:colors.textMuted, border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'6px'}}><Calendar size={14}/> Reprogramar</button>
                     <button onClick={() => setShowContinuationForm(true)} style={{padding:'8px 12px', borderRadius:'6px', fontSize:'12px', backgroundColor:colors.bgTertiary, color:colors.textMuted, border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'6px'}}><ArrowRightCircle size={14}/> Programar Continuación</button>
                     <button onClick={() => { setShowCloneForm(true); const s = new Date(form.start); const e = new Date(form.end); setCloneDate(toISODateString(s)); setCloneStart(s.toTimeString().slice(0,5)); setCloneEnd(e.toTimeString().slice(0,5)); }} style={{padding:'8px 12px', borderRadius:'6px', fontSize:'12px', backgroundColor:colors.bgTertiary, color:colors.textMuted, border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'6px'}}><Copy size={14}/> Clonar</button>
+                    {taskStatus !== 'pending' && (
+                        <button onClick={() => { if(confirm('¿Reiniciar esta actividad? Se borrarán las sesiones de tiempo y el estado volverá a "Pendiente".')) { setForm(f => ({ ...f, sessions: [], status: 'pending' })); onSave({ ...form, sessions: [], status: 'pending', activityTypeName: typeInfo?.name || 'Actividad' }); }}} style={{padding:'8px 12px', borderRadius:'6px', fontSize:'12px', backgroundColor:colors.danger+'15', color:colors.danger, border:`1px solid ${colors.danger}33`, cursor:'pointer', display:'flex', alignItems:'center', gap:'6px'}}><RotateCcw size={14}/> Reiniciar</button>
+                    )}
                     <button onClick={() => onDelete(task.id)} style={{color:colors.warning, backgroundColor:'transparent', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'4px', fontSize:'12px'}}><Trash2 size={14}/></button>
                 </div>
             )}
