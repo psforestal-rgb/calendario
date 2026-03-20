@@ -21,7 +21,7 @@ import { BatchesModal, BatchLinkSection } from './BatchesManager.jsx';
 import { DocumentsModal } from './DocumentsManager.jsx';
 
 // --- DATA SEMILLA (CONSTANTES) ---
-const APP_VERSION = '2026.03.01.1';
+const APP_VERSION = '2026.03.20.1';
 
 const PAYMENTS_2026 = [
   { date: '2026-01-13', name: 'Pago Salario IQ', type: 'payment' }, { date: '2026-01-23', name: 'Salario Escolar', type: 'payment', special: true }, { date: '2026-01-28', name: 'Pago Salario IIQ', type: 'payment' },
