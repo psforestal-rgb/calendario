@@ -931,7 +931,7 @@ const SyncIndicator = ({ taskId, taskSyncMap, lastBackupAt, onForceSync, colors,
   );
 };
 
-const CalendarCell = ({ day, tasks, currentDate, dayTag, markers, onToggleTag, onSelectDay, onAddTask, onEditTask, isSelected, onDrop, colors, activityTypes, isMonthOverBudget, viaticumRates, taskSyncMap, lastBackupAt, onForceSync, isMobile }) => {
+const CalendarCell = ({ day, tasks, currentDate, dayTag, markers, onToggleTag, onSelectDay, onAddTask, onEditTask, isSelected, onDrop, colors, activityTypes, isMonthOverBudget, viaticumRates, taskSyncMap, lastBackupAt, onForceSync, isMobile, cases }) => {
   const dayStr = toISODateString(day);
   const dayTasks = tasks
     .filter(t => toISODateString(new Date(t.start)) === dayStr)
@@ -1039,7 +1039,13 @@ const CalendarCell = ({ day, tasks, currentDate, dayTag, markers, onToggleTag, o
                  {showBudgetWarning && <DollarSign size={10} color={colors.danger} style={{marginRight:'2px',marginTop:'2px',flexShrink:0}} />}
                  <div style={{display:'flex',flexDirection:'column',overflow:'hidden',lineHeight:'1.3',flex:1,minWidth:0}}>
                    <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ti?.name || t.activityTypeName || 'Actividad'}</span>
-                   {(t.fieldData?.expediente || t.caseExternalRefText) && <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:'9px',opacity:0.7}}>{t.fieldData?.expediente || t.caseExternalRefText}</span>}
+                   {(t.fieldData?.expediente || t.caseExternalRefText || t.caseUid) && (() => {
+                     const caseInfo = t.caseUid && cases ? cases.find(c => c.caseUid === t.caseUid) : null;
+                     const caseLabel = caseInfo ? (caseInfo.title || caseInfo.caseType) : null;
+                     const refLabel = t.fieldData?.expediente || t.caseExternalRefText;
+                     const displayLabel = caseLabel || refLabel;
+                     return displayLabel ? <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:'9px',opacity:0.7}}>{displayLabel}</span> : null;
+                   })()}
                  </div>
                  <SyncIndicator taskId={t.id} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={onForceSync} colors={colors} size={10}/>
               </div>
@@ -6414,6 +6420,7 @@ const App = () => {
                          lastBackupAt={lastBackupAt}
                          onForceSync={forceSyncTask}
                          isMobile={isMobile}
+                         cases={cases}
                        />
                     ))}
                  </div>
