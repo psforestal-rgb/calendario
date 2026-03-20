@@ -59,6 +59,11 @@ const CaseForm = ({ caseData, onSave, onCancel, colors, holidays, initialTitle }
     return {
       caseType: CASE_TYPES[0],
       title: initialTitle || '',
+      applicant: '',
+      applicantId: '',
+      applicantPhone: '',
+      applicantEmail: '',
+      location: '',
       notes: '',
       externalRefs: [{ system: 'SICAF', value: '', status: 'pendiente', note: '' }],
       receptionDateReal: '',
@@ -164,6 +169,33 @@ const CaseForm = ({ caseData, onSave, onCancel, colors, holidays, initialTitle }
       <div>
         <label style={labelStyle}>Título / Descripción breve</label>
         <input type="text" style={inputStyle} value={form.title} onChange={e => set('title', e.target.value)} placeholder="Ej: PP Finca Los Robles - Hojancha" />
+      </div>
+
+      {/* Solicitante / Interesado */}
+      <div style={{ padding: '10px', backgroundColor: colors.bgTertiary, borderRadius: '8px', border: `1px solid ${colors.border}` }}>
+        <label style={{ ...labelStyle, marginBottom: '8px' }}>Solicitante / Interesado</label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+          <div>
+            <label style={{ ...labelStyle, fontSize: '11px', fontWeight: '400' }}>Nombre</label>
+            <input type="text" style={inputStyle} value={form.applicant || ''} onChange={e => set('applicant', e.target.value)} placeholder="Nombre completo" />
+          </div>
+          <div>
+            <label style={{ ...labelStyle, fontSize: '11px', fontWeight: '400' }}>Cédula / ID</label>
+            <input type="text" style={inputStyle} value={form.applicantId || ''} onChange={e => set('applicantId', e.target.value)} placeholder="Ej: 1-1234-5678" />
+          </div>
+          <div>
+            <label style={{ ...labelStyle, fontSize: '11px', fontWeight: '400' }}>Teléfono</label>
+            <input type="text" style={inputStyle} value={form.applicantPhone || ''} onChange={e => set('applicantPhone', e.target.value)} placeholder="Ej: 8888-8888" />
+          </div>
+          <div>
+            <label style={{ ...labelStyle, fontSize: '11px', fontWeight: '400' }}>Correo</label>
+            <input type="email" style={inputStyle} value={form.applicantEmail || ''} onChange={e => set('applicantEmail', e.target.value)} placeholder="correo@ejemplo.com" />
+          </div>
+        </div>
+        <div style={{ marginTop: '8px' }}>
+          <label style={{ ...labelStyle, fontSize: '11px', fontWeight: '400' }}>Ubicación / Finca</label>
+          <input type="text" style={inputStyle} value={form.location || ''} onChange={e => set('location', e.target.value)} placeholder="Ej: Distrito, cantón — Finca La Ceiba" />
+        </div>
       </div>
 
       {/* Referencias externas */}
@@ -516,6 +548,25 @@ const CaseDetail = ({ caseData, onEdit, onBack, onDelete, colors, holidays, task
         {deadlineResult && <RiskBadge risk={deadlineResult.risk} colors={colors} />}
       </div>
 
+      {/* Botón Editar prominente */}
+      <div style={{ marginBottom: '12px' }}>
+        <button onClick={() => onEdit(caseData)} style={{ padding: '8px 16px', backgroundColor: colors.accent, color: colors.bgPrimary, fontWeight: 'bold', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', width: '100%', justifyContent: 'center' }}>
+          <Edit2 size={14} /> Editar caso / expediente
+        </button>
+      </div>
+
+      {/* Solicitante / Interesado */}
+      {(caseData.applicant || caseData.applicantId || caseData.applicantPhone || caseData.applicantEmail || caseData.location) && (
+        <div>
+          <div style={sectionTitle}>Solicitante / Interesado</div>
+          {caseData.applicant && <div style={rowStyle}><span style={{ color: colors.textMuted }}>Nombre</span><span style={{ color: colors.textPrimary }}>{caseData.applicant}</span></div>}
+          {caseData.applicantId && <div style={rowStyle}><span style={{ color: colors.textMuted }}>Cédula / ID</span><span style={{ color: colors.textPrimary }}>{caseData.applicantId}</span></div>}
+          {caseData.applicantPhone && <div style={rowStyle}><span style={{ color: colors.textMuted }}>Teléfono</span><span style={{ color: colors.textPrimary }}>{caseData.applicantPhone}</span></div>}
+          {caseData.applicantEmail && <div style={rowStyle}><span style={{ color: colors.textMuted }}>Correo</span><span style={{ color: colors.textPrimary }}>{caseData.applicantEmail}</span></div>}
+          {caseData.location && <div style={rowStyle}><span style={{ color: colors.textMuted }}>Ubicación / Finca</span><span style={{ color: colors.textPrimary }}>{caseData.location}</span></div>}
+        </div>
+      )}
+
       {/* Refs externas */}
       {caseData.externalRefs?.length > 0 && (
         <div>
@@ -639,13 +690,21 @@ const CasesModalContent = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, c
       .sort((a, b) => a.ref.localeCompare(b.ref));
   }, [tasks]);
 
-  // Filtrar casos por búsqueda
+  // Filtrar casos por búsqueda (ampliada: título, tipo, expediente, solicitante, notas, estado, ubicación, cédula, teléfono, correo)
   const filteredCases = useMemo(() => {
     if (!searchQuery.trim()) return safeCases;
     const q = searchQuery.toLowerCase();
     return safeCases.filter(c =>
       String(c.title || '').toLowerCase().includes(q) ||
       String(c.caseType || '').toLowerCase().includes(q) ||
+      String(c.applicant || '').toLowerCase().includes(q) ||
+      String(c.applicantId || '').toLowerCase().includes(q) ||
+      String(c.applicantPhone || '').toLowerCase().includes(q) ||
+      String(c.applicantEmail || '').toLowerCase().includes(q) ||
+      String(c.location || '').toLowerCase().includes(q) ||
+      String(c.notes || '').toLowerCase().includes(q) ||
+      String(c.caseStatus || '').toLowerCase().includes(q) ||
+      (CASE_STATUSES.find(s => s.value === c.caseStatus)?.label || '').toLowerCase().includes(q) ||
       (Array.isArray(c.externalRefs) && c.externalRefs.some(r => String(r.value || '').toLowerCase().includes(q)))
     );
   }, [safeCases, searchQuery]);
@@ -707,7 +766,7 @@ const CasesModalContent = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, c
             <div style={{ flex: 1, position: 'relative', minWidth: '180px' }}>
               <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: colors.textMuted }} />
               <input
-                type="text" placeholder="Buscar por título o N° expediente..."
+                type="text" placeholder="Buscar por título, expediente, solicitante, ubicación..."
                 style={{ width: '100%', padding: '8px 10px 8px 30px', borderRadius: '6px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgPrimary, color: colors.textPrimary, fontSize: '13px', boxSizing: 'border-box' }}
                 value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
               />
@@ -737,6 +796,7 @@ const CasesModalContent = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, c
                 const statusLabel = CASE_STATUSES.find(s => s.value === c.caseStatus)?.label || String(c.caseStatus || '');
                 const displayTitle = String(c.title || c.caseType || 'Sin título');
                 const displayType = String(c.caseType || '');
+                const linkedTaskCount = (tasks || []).filter(t => t.caseUid === c.caseUid).length;
 
                 return (
                   <div key={c.caseUid || c.id} onClick={() => openDetail(c)} style={{
@@ -745,15 +805,24 @@ const CasesModalContent = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, c
                     backgroundColor: colors.bgPrimary, cursor: 'pointer',
                     transition: 'background-color 0.15s ease'
                   }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: '13px', fontWeight: '600', color: colors.textPrimary }}>{displayTitle}</div>
                         <div style={{ fontSize: '11px', color: colors.textMuted, marginTop: '2px' }}>
                           {displayType} — {statusLabel}
                           {refText && <span> — {refText}</span>}
                         </div>
+                        {(c.applicant || c.location) && (
+                          <div style={{ fontSize: '11px', color: colors.textSecondary, marginTop: '3px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            {c.applicant && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ opacity: 0.5 }}>Solicitante:</span> {c.applicant}</span>}
+                            {c.location && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ opacity: 0.5 }}>Ubicación:</span> {c.location}</span>}
+                          </div>
+                        )}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '8px' }}>
+                        {linkedTaskCount > 0 && (
+                          <span style={{ fontSize: '10px', color: colors.textMuted, backgroundColor: colors.bgTertiary, padding: '2px 6px', borderRadius: '8px' }}>{linkedTaskCount} act.</span>
+                        )}
                         {c.computed?.effectiveMaxDueDate && (
                           <span style={{ fontSize: '11px', color: colors.textMuted }}>{fmtDate(c.computed.effectiveMaxDueDate)}</span>
                         )}
@@ -948,6 +1017,10 @@ const CaseLinkSection = ({ form, setForm, cases, colors, tasks }) => {
     return cases.filter(c =>
       c.title?.toLowerCase().includes(q) ||
       c.caseType?.toLowerCase().includes(q) ||
+      c.applicant?.toLowerCase().includes(q) ||
+      c.applicantId?.toLowerCase().includes(q) ||
+      c.location?.toLowerCase().includes(q) ||
+      c.notes?.toLowerCase().includes(q) ||
       c.externalRefs?.some(r => r.value?.toLowerCase().includes(q))
     ).slice(0, 5);
   }, [caseSearch, cases]);
