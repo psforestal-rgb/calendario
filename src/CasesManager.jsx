@@ -11,7 +11,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   Search, Plus, X, ChevronLeft, Save, FileText, Calendar,
-  ExternalLink, AlertCircle, Clock, Edit2, Trash2, Link, Unlink
+  ExternalLink, AlertCircle, Clock, Edit2, Trash2, Link, Unlink, ArrowRightCircle
 } from 'lucide-react';
 import { computeDeadline, toISODate } from './deadlineEngine.js';
 import {
@@ -52,13 +52,13 @@ const RiskBadge = ({ risk, colors }) => {
 // FORMULARIO DE CASO (crear / editar)
 // ============================================================
 
-const CaseForm = ({ caseData, onSave, onCancel, colors, holidays }) => {
+const CaseForm = ({ caseData, onSave, onCancel, colors, holidays, initialTitle }) => {
   const isNew = !caseData;
   const [form, setForm] = useState(() => {
     if (caseData) return { ...caseData };
     return {
       caseType: CASE_TYPES[0],
-      title: '',
+      title: initialTitle || '',
       notes: '',
       externalRefs: [{ system: 'SICAF', value: '', status: 'pendiente', note: '' }],
       receptionDateReal: '',
@@ -611,14 +611,33 @@ const CaseDetail = ({ caseData, onEdit, onBack, onDelete, colors, holidays, task
 // MODAL PRINCIPAL DE CASOS
 // ============================================================
 
-const CasesModalContent = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLinks, onSaveCaseLink, onDeleteCaseLink, colors, holidays, tasks, Modal }) => {
-  const [view, setView] = useState('list'); // 'list' | 'detail' | 'form'
+const CasesModalContent = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, caseLinks, onSaveCaseLink, onDeleteCaseLink, colors, holidays, tasks, Modal, onSaveTask }) => {
+  const [view, setView] = useState('list'); // 'list' | 'detail' | 'form' | 'temp_refs' | 'convert_form'
   const [selectedCase, setSelectedCase] = useState(null);
   const [editingCase, setEditingCase] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [convertingTempRef, setConvertingTempRef] = useState(null); // temporal ref text being converted
 
   // Ensure safe cases data (guard against any remaining Firestore objects)
   const safeCases = useMemo(() => (cases || []).filter(c => c && typeof c === 'object'), [cases]);
+
+  // Collect unique temporal references from tasks
+  const tempRefs = useMemo(() => {
+    const refMap = {};
+    (tasks || []).forEach(t => {
+      if (!t.caseUid && t.caseExternalRefText) {
+        const ref = t.caseExternalRefText.trim();
+        if (ref) {
+          if (!refMap[ref]) refMap[ref] = { count: 0, tasks: [] };
+          refMap[ref].count++;
+          refMap[ref].tasks.push(t);
+        }
+      }
+    });
+    return Object.entries(refMap)
+      .map(([ref, data]) => ({ ref, count: data.count, tasks: data.tasks }))
+      .sort((a, b) => a.ref.localeCompare(b.ref));
+  }, [tasks]);
 
   // Filtrar casos por búsqueda
   const filteredCases = useMemo(() => {
@@ -650,6 +669,20 @@ const CasesModalContent = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, c
     setEditingCase(null);
   };
 
+  const handleConvertSave = (caseToSave) => {
+    // Save the new case
+    onSaveCase(caseToSave);
+    // Update all tasks that had this temporal reference to link to the new case
+    if (convertingTempRef && onSaveTask) {
+      const refTasks = (tasks || []).filter(t => !t.caseUid && t.caseExternalRefText?.trim() === convertingTempRef);
+      refTasks.forEach(t => {
+        onSaveTask({ ...t, caseUid: caseToSave.caseUid, caseExternalRefText: null, workstream: 'case' });
+      });
+    }
+    setConvertingTempRef(null);
+    setView('list');
+  };
+
   const handleDelete = (caseUid) => {
     if (confirm('¿Eliminar este caso? Las tareas vinculadas no se eliminarán.')) {
       onDeleteCase(caseUid);
@@ -661,15 +694,17 @@ const CasesModalContent = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, c
   const openDetail = (c) => { setSelectedCase(c); setView('detail'); };
   const openEdit = (c) => { setEditingCase(c); setView('form'); };
   const openNew = () => { setEditingCase(null); setView('form'); };
-  const goBack = () => { setView('list'); setSelectedCase(null); setEditingCase(null); };
+  const goBack = () => { setView('list'); setSelectedCase(null); setEditingCase(null); setConvertingTempRef(null); };
+  const openTempRefs = () => { setView('temp_refs'); };
+  const startConvert = (refText) => { setConvertingTempRef(refText); setView('convert_form'); };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Casos / Expedientes" size="lg" colors={colors}>
       {view === 'list' && (
         <div>
-          {/* Barra de búsqueda + botón crear */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-            <div style={{ flex: 1, position: 'relative' }}>
+          {/* Barra de búsqueda + botones */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, position: 'relative', minWidth: '180px' }}>
               <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: colors.textMuted }} />
               <input
                 type="text" placeholder="Buscar por título o N° expediente..."
@@ -677,6 +712,11 @@ const CasesModalContent = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, c
                 value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
               />
             </div>
+            {tempRefs.length > 0 && (
+              <button onClick={openTempRefs} style={{ padding: '8px 12px', backgroundColor: colors.warning + '22', color: colors.warning, fontWeight: '600', borderRadius: '6px', border: `1px solid ${colors.warning}44`, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                <Clock size={13} /> Temporales ({tempRefs.length})
+              </button>
+            )}
             <button onClick={openNew} style={{ padding: '8px 14px', backgroundColor: colors.success, color: colors.bgPrimary, fontWeight: 'bold', borderRadius: '6px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', whiteSpace: 'nowrap' }}>
               <Plus size={14} /> Nuevo caso
             </button>
@@ -736,6 +776,103 @@ const CasesModalContent = ({ isOpen, onClose, cases, onSaveCase, onDeleteCase, c
         </div>
       )}
 
+      {/* Vista de referencias temporales */}
+      {view === 'temp_refs' && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+            <button onClick={goBack} style={{ padding: '4px', background: 'none', border: 'none', color: colors.textMuted, cursor: 'pointer' }}><ChevronLeft size={18} /></button>
+            <span style={{ fontSize: '15px', fontWeight: '600', color: colors.textPrimary }}>Referencias temporales</span>
+            <span style={{ fontSize: '11px', color: colors.textMuted }}>({tempRefs.length})</span>
+          </div>
+
+          <div style={{ fontSize: '12px', color: colors.textMuted, marginBottom: '12px', padding: '8px 10px', backgroundColor: colors.bgTertiary, borderRadius: '6px', border: `1px solid ${colors.border}` }}>
+            Estas referencias agrupan actividades que aún no tienen un expediente formal creado. Seleccione una para convertirla en caso/expediente.
+          </div>
+
+          {tempRefs.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '30px 20px', color: colors.textMuted }}>
+              <Clock size={28} style={{ opacity: 0.3, marginBottom: '8px' }} />
+              <div style={{ fontSize: '13px' }}>No hay referencias temporales pendientes</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {tempRefs.map(({ ref, count, tasks: refTasks }) => {
+                const latestDate = refTasks.reduce((latest, t) => {
+                  const d = new Date(t.start);
+                  return d > latest ? d : latest;
+                }, new Date(0));
+
+                return (
+                  <div key={ref} style={{
+                    padding: '12px', borderRadius: '8px', border: `1px solid ${colors.border}`,
+                    borderLeft: `4px solid ${colors.warning}`,
+                    backgroundColor: colors.bgPrimary
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: colors.textPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Clock size={13} style={{ color: colors.warning, flexShrink: 0 }} />
+                          {ref}
+                        </div>
+                        <div style={{ fontSize: '11px', color: colors.textMuted, marginTop: '4px' }}>
+                          {count} actividad{count !== 1 ? 'es' : ''} vinculada{count !== 1 ? 's' : ''}
+                          {' — Última: '}{fmtDate(latestDate)}
+                        </div>
+                        {/* Mini list of linked activities */}
+                        <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          {refTasks.slice(0, 3).map(t => (
+                            <div key={t.id} style={{ fontSize: '11px', color: colors.textSecondary, paddingLeft: '19px' }}>
+                              {fmtDate(t.start)} — {t.activityTypeName || 'Actividad'} {t.subtipo ? `(${t.subtipo})` : ''}
+                            </div>
+                          ))}
+                          {refTasks.length > 3 && (
+                            <div style={{ fontSize: '10px', color: colors.textMuted, paddingLeft: '19px', fontStyle: 'italic' }}>
+                              +{refTasks.length - 3} más...
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => startConvert(ref)}
+                        style={{
+                          padding: '6px 12px', backgroundColor: colors.success, color: colors.bgPrimary,
+                          fontWeight: '600', borderRadius: '6px', border: 'none', cursor: 'pointer',
+                          fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', flexShrink: 0
+                        }}
+                      >
+                        <ArrowRightCircle size={12} /> Crear expediente
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Formulario de conversión de referencia temporal a caso */}
+      {view === 'convert_form' && convertingTempRef && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <button onClick={() => { setConvertingTempRef(null); setView('temp_refs'); }} style={{ padding: '4px', background: 'none', border: 'none', color: colors.textMuted, cursor: 'pointer' }}><ChevronLeft size={18} /></button>
+            <span style={{ fontSize: '15px', fontWeight: '600', color: colors.textPrimary }}>Crear expediente desde referencia temporal</span>
+          </div>
+          <div style={{ fontSize: '12px', color: colors.warning, marginBottom: '12px', padding: '8px 10px', backgroundColor: colors.warning + '11', borderRadius: '6px', border: `1px solid ${colors.warning}33`, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Clock size={13} style={{ flexShrink: 0 }} />
+            <span>Referencia: <strong>{convertingTempRef}</strong> — {tempRefs.find(r => r.ref === convertingTempRef)?.count || 0} actividad(es) se vincularán automáticamente al nuevo expediente.</span>
+          </div>
+          <CaseForm
+            caseData={null}
+            onSave={handleConvertSave}
+            onCancel={() => { setConvertingTempRef(null); setView('temp_refs'); }}
+            colors={colors}
+            holidays={holidays}
+            initialTitle={convertingTempRef}
+          />
+        </div>
+      )}
+
       {view === 'detail' && selectedCase && (
         <CaseDetail
           caseData={selectedCase}
@@ -781,7 +918,7 @@ const CasesModal = (props) => {
 // SECCIÓN DE VINCULACIÓN DE CASO EN TASKFORMMODAL
 // ============================================================
 
-const CaseLinkSection = ({ form, setForm, cases, colors }) => {
+const CaseLinkSection = ({ form, setForm, cases, colors, tasks }) => {
   const [expanded, setExpanded] = useState(false);
   const [caseSearch, setCaseSearch] = useState('');
 
@@ -789,6 +926,21 @@ const CaseLinkSection = ({ form, setForm, cases, colors }) => {
     if (!form.caseUid) return null;
     return cases.find(c => c.caseUid === form.caseUid) || null;
   }, [form.caseUid, cases]);
+
+  // Collect unique temporal references from all tasks (no caseUid, has caseExternalRefText)
+  const existingTempRefs = useMemo(() => {
+    const refMap = {};
+    (tasks || []).forEach(t => {
+      if (!t.caseUid && t.caseExternalRefText) {
+        const ref = t.caseExternalRefText.trim();
+        if (ref) {
+          if (!refMap[ref]) refMap[ref] = 0;
+          refMap[ref]++;
+        }
+      }
+    });
+    return Object.entries(refMap).map(([ref, count]) => ({ ref, count })).sort((a, b) => a.ref.localeCompare(b.ref));
+  }, [tasks]);
 
   const searchResults = useMemo(() => {
     if (!caseSearch.trim()) return [];
@@ -809,12 +961,16 @@ const CaseLinkSection = ({ form, setForm, cases, colors }) => {
     setForm(f => ({ ...f, caseUid: null, workstream: 'non_case' }));
   };
 
+  const selectTempRef = (refText) => {
+    setForm(f => ({ ...f, caseExternalRefText: refText }));
+  };
+
   const inputStyle = { width: '100%', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgPrimary, color: colors.textPrimary, fontSize: '13px', boxSizing: 'border-box' };
 
   return (
     <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '12px' }}>
       <button onClick={() => setExpanded(!expanded)} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: colors.accent, backgroundColor: 'transparent', border: 'none', cursor: 'pointer', marginBottom: '8px' }}>
-        <FileText size={12} /> Caso / Expediente {linkedCase && '(Vinculado)'}
+        <FileText size={12} /> Caso / Expediente {linkedCase && '(Vinculado)'} {!linkedCase && form.caseExternalRefText && '(Ref. temporal)'}
       </button>
 
       {expanded && (
@@ -895,6 +1051,30 @@ const CaseLinkSection = ({ form, setForm, cases, colors }) => {
                   value={form.caseExternalRefText || ''}
                   onChange={e => setForm(f => ({ ...f, caseExternalRefText: e.target.value || null }))}
                 />
+
+                {/* List of existing temporal references */}
+                {existingTempRefs.length > 0 && (
+                  <div style={{ marginTop: '8px' }}>
+                    <label style={{ fontSize: '11px', color: colors.textMuted, display: 'block', marginBottom: '4px' }}>Referencias temporales existentes:</label>
+                    <div style={{ maxHeight: '120px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      {existingTempRefs.map(({ ref, count }) => (
+                        <div
+                          key={ref}
+                          onClick={() => selectTempRef(ref)}
+                          style={{
+                            padding: '5px 8px', borderRadius: '4px', cursor: 'pointer',
+                            backgroundColor: form.caseExternalRefText === ref ? (colors.accent + '22') : colors.bgSecondary,
+                            border: `1px solid ${form.caseExternalRefText === ref ? colors.accent : colors.border}`,
+                            fontSize: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                          }}
+                        >
+                          <span style={{ color: colors.textPrimary }}><Clock size={10} style={{ marginRight: '4px', verticalAlign: 'middle', opacity: 0.6 }} />{ref}</span>
+                          <span style={{ fontSize: '10px', color: colors.textMuted, backgroundColor: colors.bgTertiary, padding: '1px 6px', borderRadius: '8px' }}>{count} evento{count !== 1 ? 's' : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
