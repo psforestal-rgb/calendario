@@ -5051,6 +5051,11 @@ const App = () => {
     catch(e) { return null; }
   });
 
+  // --- PROTECCIÓN DE SESIÓN: Auto-backup local y detección de cambio de UID ---
+  const [localBackupAvailable, setLocalBackupAvailable] = useState(false);
+  const [localBackupInfo, setLocalBackupInfo] = useState(null); // {taskCount, exportedAt, previousUid}
+  const [sessionRestored, setSessionRestored] = useState(false);
+
   // --- NUEVOS ESTADOS DE CONFIGURACIÓN ---
   const [activityTypes, setActivityTypes] = useState(DEFAULT_ACTIVITY_TYPES);
   const [ppCodes, setPpCodes] = useState(DEFAULT_PP_CODES); // Use the new default array with descriptions
@@ -5267,6 +5272,111 @@ const App = () => {
       unsubscribeSettings();
     };
   }, [user]);
+
+  // --- PROTECCIÓN DE SESIÓN: Auto-backup local y detección de cambio de UID ---
+  useEffect(() => {
+    if (!user) return;
+    // Guardar UID actual y detectar si cambió
+    try {
+      const previousUid = localStorage.getItem('calendario_session_uid');
+      if (previousUid && previousUid !== user.uid) {
+        // UID cambió - verificar si hay backup local del UID anterior
+        const backupRaw = localStorage.getItem('calendario_local_backup');
+        if (backupRaw) {
+          const backup = JSON.parse(backupRaw);
+          if (backup.tasks && backup.tasks.length > 0) {
+            setLocalBackupAvailable(true);
+            setLocalBackupInfo({
+              taskCount: backup.tasks.length,
+              exportedAt: backup.exportedAt,
+              previousUid: previousUid
+            });
+          }
+        }
+      }
+      localStorage.setItem('calendario_session_uid', user.uid);
+    } catch(e) { console.warn('Session protection: localStorage error', e); }
+  }, [user]);
+
+  // Auto-guardar backup local cada vez que cambian las tareas (protección contra pérdida de sesión)
+  useEffect(() => {
+    if (!user || tasks.length === 0 || sessionRestored) return;
+    try {
+      const backupData = {
+        tasks: tasks,
+        trash: trashTasks,
+        settings: { activityTypes, ppCodes, viaticumRates, monthlyBudgets, lodgingRates, dayOverrides, isBudgetLocked, isViaticosLocked, isTypesLocked, isPPLocked },
+        exportedAt: new Date().toISOString(),
+        uid: user.uid
+      };
+      localStorage.setItem('calendario_local_backup', JSON.stringify(backupData));
+    } catch(e) { console.warn('Auto-backup local: error', e); }
+  }, [tasks, trashTasks, user]);
+
+  // Detectar sesión vacía: si tenemos 0 tareas pero hay backup local (incluso del mismo UID tras borrado accidental)
+  useEffect(() => {
+    if (!user || tasks.length > 0 || sessionRestored) return;
+    // Esperar un momento para que Firestore cargue
+    const timer = setTimeout(() => {
+      try {
+        const backupRaw = localStorage.getItem('calendario_local_backup');
+        if (backupRaw) {
+          const backup = JSON.parse(backupRaw);
+          if (backup.tasks && backup.tasks.length > 0) {
+            setLocalBackupAvailable(true);
+            setLocalBackupInfo({
+              taskCount: backup.tasks.length,
+              exportedAt: backup.exportedAt,
+              previousUid: backup.uid || 'desconocido'
+            });
+          }
+        }
+      } catch(e) {}
+    }, 5000); // Esperar 5s para confirmar que Firestore realmente no tiene datos
+    return () => clearTimeout(timer);
+  }, [user, tasks.length, sessionRestored]);
+
+  // Función para restaurar desde backup local
+  const restoreFromLocalBackup = () => {
+    try {
+      const backupRaw = localStorage.getItem('calendario_local_backup');
+      if (!backupRaw) { alert('No se encontró respaldo local.'); return; }
+      const data = JSON.parse(backupRaw);
+      if (data.tasks && Array.isArray(data.tasks)) {
+        data.tasks.forEach(task => saveTaskToDB(task));
+      }
+      if (data.trash && Array.isArray(data.trash)) {
+        data.trash.forEach(item => {
+          const { id, ...rest } = item;
+          const db = getFirestore();
+          setDoc(doc(db, 'users', user.uid, 'trash', id), rest);
+        });
+      }
+      if (data.settings) {
+        if (data.settings.activityTypes) setActivityTypes(data.settings.activityTypes.map(t => t.fields ? { ...t, fields: t.fields.filter(f => f !== 'expediente') } : t));
+        if (data.settings.ppCodes) setPpCodes(data.settings.ppCodes);
+        if (data.settings.viaticumRates) setViaticumRates(data.settings.viaticumRates);
+        if (data.settings.monthlyBudgets) setMonthlyBudgets(data.settings.monthlyBudgets);
+        if (data.settings.lodgingRates) setLodgingRates(data.settings.lodgingRates);
+        if (data.settings.dayOverrides) setDayOverrides(data.settings.dayOverrides);
+        if (data.settings.isBudgetLocked !== undefined) setIsBudgetLocked(data.settings.isBudgetLocked);
+        if (data.settings.isViaticosLocked !== undefined) setIsViaticosLocked(data.settings.isViaticosLocked);
+        if (data.settings.isTypesLocked !== undefined) setIsTypesLocked(data.settings.isTypesLocked);
+        if (data.settings.isPPLocked !== undefined) setIsPPLocked(data.settings.isPPLocked);
+        saveSettingsToDB(data.settings);
+      }
+      setSessionRestored(true);
+      setLocalBackupAvailable(false);
+      alert(`Restauradas ${data.tasks?.length || 0} actividades desde el respaldo local.`);
+    } catch (error) {
+      alert('Error al restaurar: ' + error.message);
+    }
+  };
+
+  const dismissLocalBackup = () => {
+    setLocalBackupAvailable(false);
+    setLocalBackupInfo(null);
+  };
 
   // Guardar Configs cuando cambian
   useEffect(() => {
@@ -6128,6 +6238,30 @@ const App = () => {
                    </div>
                  );
                })()}
+
+               {/* ========== ALERTA DE RESTAURACIÓN DE SESIÓN ========== */}
+               {localBackupAvailable && localBackupInfo && (
+                 <div style={{marginBottom:'16px',padding:'16px',backgroundColor:'rgba(96,165,250,0.1)',borderRadius:'10px',border:'2px solid rgba(96,165,250,0.4)'}}>
+                   <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'10px'}}>
+                     <AlertTriangle size={20} color="#60A5FA"/>
+                     <span style={{fontSize:'13px',fontWeight:'bold',color:'#60A5FA',textTransform:'uppercase'}}>Sesión diferente detectada</span>
+                   </div>
+                   <p style={{fontSize:'12px',color:colors.textSecondary,margin:'0 0 6px 0',lineHeight:'1.5'}}>
+                     Se encontró un respaldo local con <strong>{localBackupInfo.taskCount} actividades</strong> de una sesión anterior.
+                   </p>
+                   <p style={{fontSize:'11px',color:colors.textMuted,margin:'0 0 12px 0'}}>
+                     Esto ocurre cuando el navegador pierde la sesión anónima de Firebase.
+                   </p>
+                   <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
+                     <button onClick={restoreFromLocalBackup} style={{padding:'8px 16px',backgroundColor:'#60A5FA',color:colors.bgPrimary,fontWeight:'bold',borderRadius:'6px',border:'none',cursor:'pointer',fontSize:'12px',display:'flex',alignItems:'center',gap:'6px'}}>
+                       <RefreshCw size={14}/> Restaurar actividades
+                     </button>
+                     <button onClick={dismissLocalBackup} style={{padding:'8px 16px',backgroundColor:'transparent',color:colors.textMuted,borderRadius:'6px',border:`1px solid ${colors.border}`,cursor:'pointer',fontSize:'12px'}}>
+                       Ignorar
+                     </button>
+                   </div>
+                 </div>
+               )}
 
                {/* ========== ACTIVIDAD EN CURSO ========== */}
                <div style={{marginBottom:'20px'}}>
