@@ -2190,6 +2190,8 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
       const orderedEntries = Object.entries(groupedByDate).sort((a, b) => {
         return new Date(a[1][0].start) - new Date(b[1][0].start);
       });
+      // Ordenar actividades dentro de cada día por hora de inicio
+      orderedEntries.forEach(([, group]) => group.sort((a, b) => new Date(a.start) - new Date(b.start)));
 
       let currentRow = 2; // Después de las 2 filas de encabezado
       let globalRowNum = 0; // Consecutivo global
@@ -3546,6 +3548,7 @@ function renderReportB(){
 
   let globalRowNumHTML=0;
   const entries=Object.entries(grouped).sort((a,b)=>new Date(a[1][0].start)-new Date(b[1][0].start));
+  entries.forEach(([,g])=>g.sort((a,b)=>new Date(a.start)-new Date(b.start)));
   entries.forEach(([dateStr,tasksInDate])=>{
     const rc=tasksInDate.length;
     const iso=toISO(new Date(tasksInDate[0].start));
@@ -4285,6 +4288,8 @@ CLOSE_SCRIPT_TAG
                                 const db = new Date(b[1][0].start);
                                 return da - db;
                               });
+                              // Ordenar actividades dentro de cada día por hora de inicio
+                              entries.forEach(([, group]) => group.sort((a, b) => new Date(a.start) - new Date(b.start)));
 
                               return entries.flatMap(([dateStr, tasksInDate]) => {
                                 const rowCount = tasksInDate.length;
@@ -6136,7 +6141,7 @@ const App = () => {
   const activeTask = tasks.find(t => t.status === 'in_progress');
   const pendingTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'in_progress' && (new Date(t.end) < new Date() || t.status === 'paused')).sort((a,b) => new Date(a.end) - new Date(b.end));
   const weekRange = getWeekRange(selectedDay);
-  const finishedThisWeek = tasks.filter(t => t.status === 'completed' && new Date(t.end) >= weekRange.start && new Date(t.end) <= weekRange.end);
+  const finishedThisWeek = tasks.filter(t => t.status === 'completed' && new Date(t.end) >= weekRange.start && new Date(t.end) <= weekRange.end).sort((a, b) => new Date(a.start) - new Date(b.start));
 
   // --- CÁLCULO DE FRECUENCIA DE USO (para ordenar tipos y subtipos) ---
   const typeFrequency = useMemo(() => {
