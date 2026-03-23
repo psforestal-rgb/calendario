@@ -2122,8 +2122,9 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
     
     if (mode === 'scheduled') {
       // ===== ACTIVIDADES PROGRAMADAS =====
-      // Encabezado fila 1
+      // Encabezado fila 1 (con N° como primera columna)
       wsData.push([
+        { v: 'N°', s: headerStyle },
         { v: 'Fecha', s: headerStyle },
         { v: 'Lugar', s: headerStyle },
         { v: 'Actividad', s: headerStyle },
@@ -2149,6 +2150,7 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
         { v: '', s: headerStyle },
         { v: '', s: headerStyle },
         { v: '', s: headerStyle },
+        { v: '', s: headerStyle },
         { v: 'Sí', s: headerStyle },
         { v: 'No', s: headerStyle },
         { v: 'Sí', s: headerStyle },
@@ -2162,20 +2164,21 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
         { v: '', s: headerStyle }
       ]);
 
-      // Merges para encabezados
+      // Merges para encabezados (shifted +1 for N° column)
       merges = [
-        { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },   // Fecha
-        { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },   // Lugar
-        { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } },   // Actividad
-        { s: { r: 0, c: 3 }, e: { r: 1, c: 3 } },   // Expediente
-        { s: { r: 0, c: 4 }, e: { r: 1, c: 4 } },   // Acompañantes
-        { s: { r: 0, c: 5 }, e: { r: 0, c: 6 } },   // Vehículo
-        { s: { r: 0, c: 7 }, e: { r: 0, c: 8 } },   // Doble T.
-        { s: { r: 0, c: 9 }, e: { r: 0, c: 10 } },   // Tarj. ruedo
-        { s: { r: 0, c: 11 }, e: { r: 0, c: 14 } }, // Viáticos
-        { s: { r: 0, c: 15 }, e: { r: 1, c: 15 } }  // Cód. PP
+        { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },   // N°
+        { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },   // Fecha
+        { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } },   // Lugar
+        { s: { r: 0, c: 3 }, e: { r: 1, c: 3 } },   // Actividad
+        { s: { r: 0, c: 4 }, e: { r: 1, c: 4 } },   // Expediente
+        { s: { r: 0, c: 5 }, e: { r: 1, c: 5 } },   // Acompañantes
+        { s: { r: 0, c: 6 }, e: { r: 0, c: 7 } },   // Vehículo
+        { s: { r: 0, c: 8 }, e: { r: 0, c: 9 } },   // Doble T.
+        { s: { r: 0, c: 10 }, e: { r: 0, c: 11 } },  // Tarj. ruedo
+        { s: { r: 0, c: 12 }, e: { r: 0, c: 15 } },  // Viáticos
+        { s: { r: 0, c: 16 }, e: { r: 1, c: 16 } }   // Cód. PP
       ];
-      
+
       // Agrupar datos por fecha
       const groupedByDate = {};
       reportData.scheduled.forEach((t) => {
@@ -2183,17 +2186,20 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
         if (!groupedByDate[dateKey]) groupedByDate[dateKey] = [];
         groupedByDate[dateKey].push(t);
       });
-      
+
       const orderedEntries = Object.entries(groupedByDate).sort((a, b) => {
         return new Date(a[1][0].start) - new Date(b[1][0].start);
       });
-      
+      // Ordenar actividades dentro de cada día por hora de inicio
+      orderedEntries.forEach(([, group]) => group.sort((a, b) => new Date(a.start) - new Date(b.start)));
+
       let currentRow = 2; // Después de las 2 filas de encabezado
-      
+      let globalRowNum = 0; // Consecutivo global
+
       orderedEntries.forEach(([dateStr, tasksInDate]) => {
         const rowCount = tasksInDate.length;
         const startRow = currentRow;
-        
+
         // Calcular valores consolidados del día
         const anyReqVeh = tasksInDate.some(tt => !!tt.logistics?.requiereVehiculo);
         const anyDoble = tasksInDate.some(tt => !!tt.logistics?.dobleTraccion);
@@ -2202,13 +2208,13 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
         const anyAlm = tasksInDate.some(tt => (tt.logistics?.viaticos || []).includes('Almuerzo'));
         const anyCen = tasksInDate.some(tt => (tt.logistics?.viaticos || []).includes('Cena'));
         const anyHos = tasksInDate.some(tt => (tt.logistics?.viaticos || []).includes('Hospedaje'));
-        
+
         const acompFirst = tasksInDate[0].fieldData?.asistentes || '';
         const acompAllSame = tasksInDate.every(tt => (tt.fieldData?.asistentes || '') === acompFirst);
-        
+
         const ppFirst = tasksInDate[0].logistics?.codigoPP || 'PPI-17-E18';
         const ppAllSame = tasksInDate.every(tt => (tt.logistics?.codigoPP || 'PPI-17-E18') === ppFirst);
-        
+
         // --- Calcular LUGAR DE LA GIRA a nivel de DÍA ---
         const isoDay = toISODateString(new Date(tasksInDate[0].start));
         let dayModality = dayOverrides[isoDay];
@@ -2251,6 +2257,7 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
 
         tasksInDate.forEach((t, idx) => {
           const isFirst = idx === 0;
+          globalRowNum++;
 
           // Tipos que no llevan lugar de gira ni código PP (ausencias/personales)
           const noLugarNoPPTypes = [14, 15, 16, 17, 19];
@@ -2261,6 +2268,7 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
           const expediente = t.fieldData?.expediente || '';
 
           const row = [
+            { v: globalRowNum, s: cellStyleCenter },
             isFirst ? { v: shortDateStr, s: cellStyleCenter } : { v: '', s: cellStyleCenter },
             { v: lugar, s: cellStyleLeft },
             { v: actividad, s: cellStyleLeft },
@@ -2278,47 +2286,48 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
             isFirst ? { v: anyHos ? 'X' : '', s: cellStyleCenter } : { v: '', s: cellStyleCenter },
             (ppAllSame && !isFirst) ? { v: '', s: cellStyleCenter } : { v: isNoLugar ? '' : (t.logistics?.codigoPP || 'PPI-17-E18'), s: cellStyleCenter }
           ];
-          
+
           wsData.push(row);
           currentRow++;
         });
-        
-        // Agregar merges para celdas fusionadas por fecha
+
+        // Agregar merges para celdas fusionadas por fecha (shifted +1 for N° column)
         if (rowCount > 1) {
           // Fecha
-          merges.push({ s: { r: startRow, c: 0 }, e: { r: startRow + rowCount - 1, c: 0 } });
+          merges.push({ s: { r: startRow, c: 1 }, e: { r: startRow + rowCount - 1, c: 1 } });
           // Vehículo Sí
-          merges.push({ s: { r: startRow, c: 5 }, e: { r: startRow + rowCount - 1, c: 5 } });
-          // Vehículo No
           merges.push({ s: { r: startRow, c: 6 }, e: { r: startRow + rowCount - 1, c: 6 } });
-          // Doble T. Sí
+          // Vehículo No
           merges.push({ s: { r: startRow, c: 7 }, e: { r: startRow + rowCount - 1, c: 7 } });
-          // Doble T. No
+          // Doble T. Sí
           merges.push({ s: { r: startRow, c: 8 }, e: { r: startRow + rowCount - 1, c: 8 } });
-          // Tarj. ruedo Sí
+          // Doble T. No
           merges.push({ s: { r: startRow, c: 9 }, e: { r: startRow + rowCount - 1, c: 9 } });
-          // Tarj. ruedo No
+          // Tarj. ruedo Sí
           merges.push({ s: { r: startRow, c: 10 }, e: { r: startRow + rowCount - 1, c: 10 } });
-          // Viáticos D
+          // Tarj. ruedo No
           merges.push({ s: { r: startRow, c: 11 }, e: { r: startRow + rowCount - 1, c: 11 } });
-          // Viáticos A
+          // Viáticos D
           merges.push({ s: { r: startRow, c: 12 }, e: { r: startRow + rowCount - 1, c: 12 } });
-          // Viáticos C
+          // Viáticos A
           merges.push({ s: { r: startRow, c: 13 }, e: { r: startRow + rowCount - 1, c: 13 } });
-          // Viáticos H
+          // Viáticos C
           merges.push({ s: { r: startRow, c: 14 }, e: { r: startRow + rowCount - 1, c: 14 } });
+          // Viáticos H
+          merges.push({ s: { r: startRow, c: 15 }, e: { r: startRow + rowCount - 1, c: 15 } });
           // Acompañantes (si todos iguales)
           if (acompAllSame) {
-            merges.push({ s: { r: startRow, c: 4 }, e: { r: startRow + rowCount - 1, c: 4 } });
+            merges.push({ s: { r: startRow, c: 5 }, e: { r: startRow + rowCount - 1, c: 5 } });
           }
           // Código PP (si todos iguales)
           if (ppAllSame) {
-            merges.push({ s: { r: startRow, c: 15 }, e: { r: startRow + rowCount - 1, c: 15 } });
+            merges.push({ s: { r: startRow, c: 16 }, e: { r: startRow + rowCount - 1, c: 16 } });
           }
         }
       });
-      
+
       colWidths = [
+        { wch: 5 },  // N°
         { wch: 8 },  // Fecha
         { wch: 14 }, // Lugar
         { wch: 30 }, // Actividad
@@ -2336,87 +2345,88 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
         { wch: 4 },  // H
         { wch: 10 }  // Cód. PP
       ];
-      
+
       fileName = 'reporte_programadas';
-      
+
     } else if (mode === 'realized') {
       // ===== ACTIVIDADES REALIZADAS =====
-      const hasCaseData = reportData.realized.some(t => t.caseUid || t.caseExternalRefText || t.batchUid);
       const realizedHeaders = [
+        { v: 'N°', s: headerStyle },
         { v: 'Fecha', s: headerStyle },
         { v: 'Actividad', s: headerStyle },
-        { v: 'N° Expediente', s: headerStyle },
+        { v: 'Expediente/Caso', s: headerStyle },
         { v: 'Oficio', s: headerStyle },
         { v: 'Estado', s: headerStyle },
         { v: 'Tiempo', s: headerStyle }
       ];
-      if (hasCaseData) {
-        realizedHeaders.push({ v: 'Caso', s: headerStyle });
-        realizedHeaders.push({ v: 'Lote', s: headerStyle });
-      }
       wsData.push(realizedHeaders);
 
-      reportData.realized.forEach(t => {
+      reportData.realized.forEach((t, idx) => {
         const dur = (t.sessions || []).reduce((a, s) => a + ((s.end ? new Date(s.end) : new Date()) - new Date(s.start)), 0);
         const linkedCase = t.caseUid && cases ? cases.find(c => c.caseUid === t.caseUid) : null;
         const linkedBatch = t.batchUid && batches ? batches.find(b => b.batchUid === t.batchUid) : null;
+        // Construir Expediente/Caso unificado
+        const expParts = [];
+        if (t.fieldData?.expediente) expParts.push(t.fieldData.expediente);
+        if (linkedCase?.title) expParts.push(linkedCase.title);
+        else if (t.caseExternalRefText) expParts.push(t.caseExternalRefText);
+        if (linkedBatch?.title) expParts.push('Lote: ' + linkedBatch.title);
+        const expedienteCaso = expParts.join(' | ');
         const row = [
+          { v: idx + 1, s: cellStyleCenter },
           { v: new Date(t.start).toLocaleDateString('es-CR'), s: cellStyleCenter },
-          { v: t.activityTypeName, s: cellStyleLeft },
-          { v: t.fieldData?.expediente || '', s: cellStyleLeft },
+          { v: t.activityTypeName + (t.subtipo ? ' - ' + t.subtipo : ''), s: cellStyleLeft },
+          { v: expedienteCaso, s: cellStyleLeft },
           { v: t.fieldData?.informe || '', s: cellStyleLeft },
           { v: t.status, s: cellStyleCenter },
           { v: formatDuration(dur), s: cellStyleCenter }
         ];
-        if (hasCaseData) {
-          row.push({ v: linkedCase?.title || t.caseExternalRefText || '', s: cellStyleLeft });
-          row.push({ v: linkedBatch?.title || '', s: cellStyleLeft });
-        }
         wsData.push(row);
       });
 
-      colWidths = [{ wch: 12 }, { wch: 40 }, { wch: 18 }, { wch: 16 }, { wch: 15 }, { wch: 12 }];
-      if (hasCaseData) { colWidths.push({ wch: 22 }); colWidths.push({ wch: 18 }); }
+      colWidths = [{ wch: 5 }, { wch: 12 }, { wch: 40 }, { wch: 28 }, { wch: 16 }, { wch: 15 }, { wch: 12 }];
       fileName = 'reporte_realizadas';
       
     } else if (mode === 'pending') {
       // ===== ACTIVIDADES PENDIENTES =====
-      const hasCaseDataPending = reportData.pending.some(t => t.caseUid || t.caseExternalRefText || t.batchUid);
       const pendingHeaders = [
+        { v: 'N°', s: headerStyle },
         { v: 'Fecha Original', s: headerStyle },
         { v: 'Actividad', s: headerStyle },
+        { v: 'Expediente/Caso', s: headerStyle },
         { v: 'Rezago (días)', s: headerStyle },
         { v: 'Tiempo Invertido', s: headerStyle },
         { v: 'Sesiones', s: headerStyle }
       ];
-      if (hasCaseDataPending) {
-        pendingHeaders.push({ v: 'Caso', s: headerStyle });
-        pendingHeaders.push({ v: 'Lote', s: headerStyle });
-      }
       wsData.push(pendingHeaders);
 
-      reportData.pending.forEach(t => {
+      reportData.pending.forEach((t, idx) => {
         const lag = Math.floor((new Date() - new Date(t.start)) / (1000 * 60 * 60 * 24));
         const dur = (t.sessions || []).reduce((a, s) => a + ((s.end ? new Date(s.end) : new Date()) - new Date(s.start)), 0);
-        const desc = `${t.activityTypeName}${t.subtipo ? ' - ' + t.subtipo : ''} ${t.fieldData?.expediente ? 'Exp: ' + t.fieldData.expediente : ''} ${t.fieldData?.informe ? 'Inf: ' + t.fieldData.informe : ''}`;
+        const desc = `${t.activityTypeName}${t.subtipo ? ' - ' + t.subtipo : ''}`;
         const linkedCase = t.caseUid && cases ? cases.find(c => c.caseUid === t.caseUid) : null;
         const linkedBatch = t.batchUid && batches ? batches.find(b => b.batchUid === t.batchUid) : null;
+        // Construir Expediente/Caso unificado
+        const expParts = [];
+        if (t.fieldData?.expediente) expParts.push(t.fieldData.expediente);
+        if (linkedCase?.title) expParts.push(linkedCase.title);
+        else if (t.caseExternalRefText) expParts.push(t.caseExternalRefText);
+        if (linkedBatch?.title) expParts.push('Lote: ' + linkedBatch.title);
+        if (t.fieldData?.informe) expParts.push('Inf: ' + t.fieldData.informe);
+        const expedienteCaso = expParts.join(' | ');
         const row = [
+          { v: idx + 1, s: cellStyleCenter },
           { v: new Date(t.start).toLocaleDateString('es-CR'), s: cellStyleCenter },
           { v: desc, s: cellStyleLeft },
+          { v: expedienteCaso, s: cellStyleLeft },
           { v: lag > 0 ? lag : 0, s: cellStyleCenter },
           { v: formatDuration(dur), s: cellStyleCenter },
           { v: t.sessions ? t.sessions.length : 0, s: cellStyleCenter }
         ];
-        if (hasCaseDataPending) {
-          row.push({ v: linkedCase?.title || t.caseExternalRefText || '', s: cellStyleLeft });
-          row.push({ v: linkedBatch?.title || '', s: cellStyleLeft });
-        }
         wsData.push(row);
       });
 
-      colWidths = [{ wch: 14 }, { wch: 50 }, { wch: 14 }, { wch: 16 }, { wch: 10 }];
-      if (hasCaseDataPending) { colWidths.push({ wch: 22 }); colWidths.push({ wch: 18 }); }
+      colWidths = [{ wch: 5 }, { wch: 14 }, { wch: 40 }, { wch: 28 }, { wch: 14 }, { wch: 16 }, { wch: 10 }];
       fileName = 'reporte_pendientes';
       
     } else if (mode === 'telework') {
@@ -3485,17 +3495,26 @@ function renderReportA(){
 
   if(realized.length===0){document.getElementById('reportAContainer').innerHTML='<div class="empty-state"><p>No hay actividades realizadas en este periodo.</p></div>';return}
 
-  let html='<table class="report-table"><thead><tr><th>Fecha</th><th>Actividad Realizada</th><th>Tiempo</th><th>Estado</th><th>Expediente</th><th>Informe</th></tr></thead><tbody>';
-  realized.forEach(t=>{
+  let html='<table class="report-table"><thead><tr><th>N°</th><th>Fecha</th><th>Actividad Realizada</th><th>Expediente/Caso</th><th>Oficio</th><th>Tiempo</th><th>Estado</th></tr></thead><tbody>';
+  realized.forEach((t,idx)=>{
     const d=new Date(t.start);
     const worked=getTotalWorked(t);
+    const linkedCase=t.caseUid&&DATA.cases?DATA.cases.find(c=>c.caseUid===t.caseUid):null;
+    const linkedBatch=t.batchUid&&DATA.batches?DATA.batches.find(b=>b.batchUid===t.batchUid):null;
+    const expParts=[];
+    if(t.fieldData?.expediente)expParts.push(t.fieldData.expediente);
+    if(linkedCase?.title)expParts.push(linkedCase.title);
+    else if(t.caseExternalRefText)expParts.push(t.caseExternalRefText);
+    if(linkedBatch?.title)expParts.push('Lote: '+linkedBatch.title);
+    const expedienteCaso=expParts.join(' | ');
     html+='<tr>';
+    html+='<td>'+(idx+1)+'</td>';
     html+='<td>'+d.toLocaleDateString('es-CR')+'</td>';
     html+='<td style="text-align:left">'+(t.activityTypeName||'')+(t.subtipo?' - '+t.subtipo:'')+'</td>';
+    html+='<td>'+expedienteCaso+'</td>';
+    html+='<td>'+(t.fieldData?.informe||'')+'</td>';
     html+='<td>'+formatDuration(worked)+'</td>';
     html+='<td><span class="status-badge status-'+t.status+'">'+getStatusLabel(t.status)+'</span></td>';
-    html+='<td>'+(t.fieldData?.expediente||'')+'</td>';
-    html+='<td>'+(t.fieldData?.informe||'')+'</td>';
     html+='</tr>';
   });
   html+='</tbody></table>';
@@ -3525,9 +3544,11 @@ function renderReportB(){
     grouped[key].push(t);
   });
 
-  let html='<table class="report-table"><thead><tr><th rowspan="2">Fecha</th><th rowspan="2">Lugar</th><th rowspan="2">Actividad</th><th rowspan="2">Expediente</th><th rowspan="2">Acompañantes</th><th colspan="2">Vehículo</th><th colspan="2">Doble T.</th><th colspan="2">Tarj. Ruedo</th><th colspan="4">Viáticos</th><th rowspan="2">Cód. PP</th></tr><tr><th>Sí</th><th>No</th><th>Sí</th><th>No</th><th>Sí</th><th>No</th><th>D</th><th>A</th><th>C</th><th>H</th></tr></thead><tbody>';
+  let html='<table class="report-table"><thead><tr><th rowspan="2">N°</th><th rowspan="2">Fecha</th><th rowspan="2">Lugar</th><th rowspan="2">Actividad</th><th rowspan="2">Expediente</th><th rowspan="2">Acompañantes</th><th colspan="2">Vehículo</th><th colspan="2">Doble T.</th><th colspan="2">Tarj. Ruedo</th><th colspan="4">Viáticos</th><th rowspan="2">Cód. PP</th></tr><tr><th>Sí</th><th>No</th><th>Sí</th><th>No</th><th>Sí</th><th>No</th><th>D</th><th>A</th><th>C</th><th>H</th></tr></thead><tbody>';
 
+  let globalRowNumHTML=0;
   const entries=Object.entries(grouped).sort((a,b)=>new Date(a[1][0].start)-new Date(b[1][0].start));
+  entries.forEach(([,g])=>g.sort((a,b)=>new Date(a.start)-new Date(b.start)));
   entries.forEach(([dateStr,tasksInDate])=>{
     const rc=tasksInDate.length;
     const iso=toISO(new Date(tasksInDate[0].start));
@@ -3541,11 +3562,13 @@ function renderReportB(){
     const anyHos=tasksInDate.some(t=>(t.logistics?.viaticos||[]).includes('Hospedaje'));
 
     tasksInDate.forEach((t,idx)=>{
+      globalRowNumHTML++;
       const isFirst=idx===0;
       const isNoLugar=noLugarTypes.includes(parseInt(t.typeId));
       const act=(t.activityTypeName||'')+(t.subtipo?' - '+t.subtipo:'');
       const exp=t.fieldData?.expediente||'';
       html+='<tr>';
+      html+='<td>'+globalRowNumHTML+'</td>';
       if(isFirst)html+='<td rowspan="'+rc+'">'+dateStr+'</td>';
       html+='<td style="text-align:left">'+(isNoLugar?'':lugarDia)+'</td>';
       html+='<td style="text-align:left">'+act+'</td>';
@@ -3583,16 +3606,27 @@ function renderReportC(){
     return;
   }
 
-  let html='<table class="report-table"><thead><tr><th>Fecha Original</th><th>Actividad</th><th>Rezago</th><th>Tiempo Invertido</th><th>Sesiones</th></tr></thead><tbody>';
-  pending.forEach(t=>{
+  let html='<table class="report-table"><thead><tr><th>N°</th><th>Fecha Original</th><th>Actividad</th><th>Expediente/Caso</th><th>Rezago</th><th>Tiempo Invertido</th><th>Sesiones</th></tr></thead><tbody>';
+  pending.forEach((t,idx)=>{
     const lagDays=Math.floor((now-new Date(t.start))/(1000*60*60*24));
     const lagText=lagDays>0?lagDays+' días':'0 días';
     const lagColor=lagDays>7?'color:#B91C1C;font-weight:700':'';
     const worked=getTotalWorked(t);
-    const desc=(t.activityTypeName||'')+(t.subtipo?' - '+t.subtipo:'')+(t.fieldData?.expediente?' Exp: '+t.fieldData.expediente:'')+(t.fieldData?.informe?' Inf: '+t.fieldData.informe:'');
+    const desc=(t.activityTypeName||'')+(t.subtipo?' - '+t.subtipo:'');
+    const linkedCase=t.caseUid&&DATA.cases?DATA.cases.find(c=>c.caseUid===t.caseUid):null;
+    const linkedBatch=t.batchUid&&DATA.batches?DATA.batches.find(b=>b.batchUid===t.batchUid):null;
+    const expParts=[];
+    if(t.fieldData?.expediente)expParts.push(t.fieldData.expediente);
+    if(linkedCase?.title)expParts.push(linkedCase.title);
+    else if(t.caseExternalRefText)expParts.push(t.caseExternalRefText);
+    if(linkedBatch?.title)expParts.push('Lote: '+linkedBatch.title);
+    if(t.fieldData?.informe)expParts.push('Inf: '+t.fieldData.informe);
+    const expedienteCaso=expParts.join(' | ');
     html+='<tr>';
+    html+='<td>'+(idx+1)+'</td>';
     html+='<td>'+new Date(t.start).toLocaleDateString('es-CR')+'</td>';
     html+='<td style="text-align:left">'+desc+'</td>';
+    html+='<td>'+expedienteCaso+'</td>';
     html+='<td style="'+lagColor+'">'+lagText+'</td>';
     html+='<td>'+formatDuration(worked)+'</td>';
     html+='<td>'+(t.sessions?t.sessions.length:0)+'</td>';
@@ -3809,15 +3843,25 @@ function exportPDF_A(){
     return ld>=startD&&ld<=endD&&((t.sessions&&t.sessions.length>0)||t.status==='completed'||t.status==='in_progress');
   }).sort((a,b)=>new Date(a.start)-new Date(b.start));
   if(realized.length===0){alert('No hay datos para exportar.');return}
-  const headers=['Fecha','Actividad Realizada','Tiempo','Estado','Expediente','Informe'];
-  const rows=realized.map(t=>[
-    new Date(t.start).toLocaleDateString('es-CR'),
-    (t.activityTypeName||'')+(t.subtipo?' - '+t.subtipo:''),
-    formatDuration(getTotalWorked(t)),
-    getStatusLabel(t.status),
-    t.fieldData?.expediente||'',
-    t.fieldData?.informe||''
-  ]);
+  const headers=['N°','Fecha','Actividad Realizada','Expediente/Caso','Oficio','Tiempo','Estado'];
+  const rows=realized.map((t,idx)=>{
+    const linkedCase=t.caseUid&&DATA.cases?DATA.cases.find(c=>c.caseUid===t.caseUid):null;
+    const linkedBatch=t.batchUid&&DATA.batches?DATA.batches.find(b=>b.batchUid===t.batchUid):null;
+    const expParts=[];
+    if(t.fieldData?.expediente)expParts.push(t.fieldData.expediente);
+    if(linkedCase?.title)expParts.push(linkedCase.title);
+    else if(t.caseExternalRefText)expParts.push(t.caseExternalRefText);
+    if(linkedBatch?.title)expParts.push('Lote: '+linkedBatch.title);
+    return[
+      String(idx+1),
+      new Date(t.start).toLocaleDateString('es-CR'),
+      (t.activityTypeName||'')+(t.subtipo?' - '+t.subtipo:''),
+      expParts.join(' | '),
+      t.fieldData?.informe||'',
+      formatDuration(getTotalWorked(t)),
+      getStatusLabel(t.status)
+    ];
+  });
   makePDF('A. Actividades Realizadas ('+startVal+' a '+endVal+')',headers,rows,'reporte_A_realizadas.pdf');
 }
 
@@ -3832,15 +3876,17 @@ function exportPDF_B(){
   }).sort((a,b)=>new Date(a.start)-new Date(b.start));
   if(scheduled.length===0){alert('No hay datos para exportar.');return}
   const noLugarTypes=[14,15,16,17,19];
-  const headers=['Fecha','Lugar','Actividad','Acompañ.','Veh.','Doble','Tarj.','D','A','C','H','Cód. PP'];
-  const rows=scheduled.map(t=>{
+  const headers=['N°','Fecha','Lugar','Actividad','Expediente','Acompañ.','Veh.','Doble','Tarj.','D','A','C','H','Cód. PP'];
+  const rows=scheduled.map((t,idx)=>{
     const iso=toISO(new Date(t.start));
     const isNoLugar=noLugarTypes.includes(parseInt(t.typeId));
     const v=t.logistics?.viaticos||[];
     return[
+      String(idx+1),
       new Date(t.start).toLocaleDateString('es-CR'),
       isNoLugar?'':getLugarDelDia(iso,[t]),
       (t.activityTypeName||'')+(t.subtipo?' - '+t.subtipo:''),
+      t.fieldData?.expediente||'',
       t.fieldData?.asistentes||'',
       t.logistics?.requiereVehiculo?'X':'',
       t.logistics?.dobleTraccion?'X':'',
@@ -3859,13 +3905,23 @@ function exportPDF_C(){
   const now=new Date();
   const pending=DATA.tasks.filter(t=>t.status!=='completed'&&(new Date(t.end)<now||t.status==='paused')).sort((a,b)=>new Date(a.start)-new Date(b.start));
   if(pending.length===0){alert('No hay datos para exportar.');return}
-  const headers=['Fecha Original','Actividad','Rezago','Tiempo Invertido','Sesiones'];
-  const rows=pending.map(t=>{
+  const headers=['N°','Fecha Original','Actividad','Expediente/Caso','Rezago','Tiempo Invertido','Sesiones'];
+  const rows=pending.map((t,idx)=>{
     const lagDays=Math.floor((now-new Date(t.start))/(1000*60*60*24));
-    const desc=(t.activityTypeName||'')+(t.subtipo?' - '+t.subtipo:'')+(t.fieldData?.expediente?' Exp: '+t.fieldData.expediente:'')+(t.fieldData?.informe?' Inf: '+t.fieldData.informe:'');
+    const desc=(t.activityTypeName||'')+(t.subtipo?' - '+t.subtipo:'');
+    const linkedCase=t.caseUid&&DATA.cases?DATA.cases.find(c=>c.caseUid===t.caseUid):null;
+    const linkedBatch=t.batchUid&&DATA.batches?DATA.batches.find(b=>b.batchUid===t.batchUid):null;
+    const expParts=[];
+    if(t.fieldData?.expediente)expParts.push(t.fieldData.expediente);
+    if(linkedCase?.title)expParts.push(linkedCase.title);
+    else if(t.caseExternalRefText)expParts.push(t.caseExternalRefText);
+    if(linkedBatch?.title)expParts.push('Lote: '+linkedBatch.title);
+    if(t.fieldData?.informe)expParts.push('Inf: '+t.fieldData.informe);
     return[
+      String(idx+1),
       new Date(t.start).toLocaleDateString('es-CR'),
       desc,
+      expParts.join(' | '),
       (lagDays>0?lagDays:0)+' días',
       formatDuration(getTotalWorked(t)),
       String(t.sessions?t.sessions.length:0)
@@ -4149,14 +4205,22 @@ CLOSE_SCRIPT_TAG
             </div>
             <div style={{width:'100%',overflowX:'auto', maxHeight: '200px', overflowY: 'auto'}}>
               <table style={{width:'100%',fontSize:'12px',borderCollapse:'collapse'}}>
-                <thead><tr style={{backgroundColor:colors.bgSecondary,color:colors.textMuted}}><th style={{padding:'8px',textAlign:'left'}}>Fecha</th><th>Actividad</th><th>N° Expediente</th><th>Oficio</th><th>Estado</th><th>Tiempo</th></tr></thead>
+                <thead><tr style={{backgroundColor:colors.bgSecondary,color:colors.textMuted}}><th style={{padding:'8px',textAlign:'center',width:'35px'}}>N°</th><th style={{padding:'8px',textAlign:'left'}}>Fecha</th><th>Actividad</th><th>Expediente/Caso</th><th>Oficio</th><th>Estado</th><th>Tiempo</th></tr></thead>
                 <tbody>
                   {reportData.realized.length === 0 ? (
-                      <tr><td colSpan="6" style={{padding:'16px',textAlign:'center',color:colors.textMuted,fontStyle:'italic'}}>No hay actividades registradas en este periodo.</td></tr>
+                      <tr><td colSpan="7" style={{padding:'16px',textAlign:'center',color:colors.textMuted,fontStyle:'italic'}}>No hay actividades registradas en este periodo.</td></tr>
                   ) : (
-                      reportData.realized.map(t => {
+                      reportData.realized.map((t, idx) => {
                           const dur = (t.sessions || []).reduce((a, s) => a + ((s.end ? new Date(s.end) : new Date()) - new Date(s.start)), 0);
-                          return (<tr key={t.id} style={{borderBottom:`1px solid ${colors.border}`}}><td>{new Date(t.start).toLocaleDateString()}</td><td>{t.activityTypeName}</td><td>{t.fieldData?.expediente || ''}</td><td>{t.fieldData?.informe || ''}</td><td>{t.status}</td><td>{formatDuration(dur)}</td></tr>);
+                          const linkedCase = t.caseUid && cases ? cases.find(c => c.caseUid === t.caseUid) : null;
+                          const linkedBatch = t.batchUid && batches ? batches.find(b => b.batchUid === t.batchUid) : null;
+                          const expParts = [];
+                          if (t.fieldData?.expediente) expParts.push(t.fieldData.expediente);
+                          if (linkedCase?.title) expParts.push(linkedCase.title);
+                          else if (t.caseExternalRefText) expParts.push(t.caseExternalRefText);
+                          if (linkedBatch?.title) expParts.push('Lote: ' + linkedBatch.title);
+                          const expedienteCaso = expParts.join(' | ');
+                          return (<tr key={t.id} style={{borderBottom:`1px solid ${colors.border}`}}><td style={{textAlign:'center'}}>{idx + 1}</td><td>{new Date(t.start).toLocaleDateString()}</td><td>{t.activityTypeName}{t.subtipo ? ' - ' + t.subtipo : ''}</td><td>{expedienteCaso}</td><td>{t.fieldData?.informe || ''}</td><td>{t.status}</td><td>{formatDuration(dur)}</td></tr>);
                       })
                   )}
                 </tbody>
@@ -4179,6 +4243,7 @@ CLOSE_SCRIPT_TAG
                  <table style={{width:'100%',borderCollapse:'collapse',border:`1px solid ${colors.border}`}}>
                     <thead>
                       <tr>
+                        <th rowSpan="2" style={{...thStyle,minWidth:'35px'}}>N°</th>
                         <th rowSpan="2" style={{...thStyle,minWidth:'60px'}}>Fecha</th>
                         <th rowSpan="2" style={{...thStyle,minWidth:'70px'}}>Lugar</th>
                         <th rowSpan="2" style={{...thStyle,minWidth:'120px'}}>Actividad</th>
@@ -4205,10 +4270,11 @@ CLOSE_SCRIPT_TAG
                     </thead>
                     <tbody>
                         {reportData.scheduled.length === 0 ? (
-                            <tr><td colSpan="16" style={{padding:'16px',textAlign:'center',color:colors.textMuted,fontStyle:'italic'}}>No hay programación futura en este periodo.</td></tr>
+                            <tr><td colSpan="17" style={{padding:'16px',textAlign:'center',color:colors.textMuted,fontStyle:'italic'}}>No hay programación futura en este periodo.</td></tr>
                         ) : (
                             (() => {
                               const groupedByDate = {};
+                              let globalRowCounter = 0;
                               reportData.scheduled.forEach((t, index) => {
                                 const d = new Date(t.start);
                                 const dateStr = `${d.getDate()}/${d.getMonth()+1}/${String(d.getFullYear()).slice(-2)}`;
@@ -4222,6 +4288,8 @@ CLOSE_SCRIPT_TAG
                                 const db = new Date(b[1][0].start);
                                 return da - db;
                               });
+                              // Ordenar actividades dentro de cada día por hora de inicio
+                              entries.forEach(([, group]) => group.sort((a, b) => new Date(a.start) - new Date(b.start)));
 
                               return entries.flatMap(([dateStr, tasksInDate]) => {
                                 const rowCount = tasksInDate.length;
@@ -4309,6 +4377,7 @@ CLOSE_SCRIPT_TAG
                                 }
 
                                 return tasksInDate.map((t, idxInGroup) => {
+                                  globalRowCounter++;
                                   const isFirstInGroup = idxInGroup === 0;
 
                                   // Tipos que no llevan lugar de gira ni código PP (ausencias/personales)
@@ -4321,6 +4390,7 @@ CLOSE_SCRIPT_TAG
 
                                   return (
                                     <tr key={`${t.id}-${idxInGroup}`} style={{borderBottom:`1px solid ${colors.border}`}}>
+                                      <td style={tdStyle}>{globalRowCounter}</td>
                                       {isFirstInGroup && (
                                         <td style={tdStyle} rowSpan={rowCount}>{dateStr}</td>
                                       )}
@@ -4439,26 +4509,39 @@ CLOSE_SCRIPT_TAG
             <div style={{width:'100%',overflowX:'auto', maxHeight: '200px', overflowY: 'auto'}}>
               <table style={{width:'100%',fontSize:'12px',borderCollapse:'collapse'}}>
                 <thead><tr style={{backgroundColor:colors.bgSecondary,color:colors.textMuted}}>
+                    <th style={{padding:'8px',textAlign:'center',width:'35px'}}>N°</th>
                     <th style={{padding:'8px',textAlign:'left'}}>Fecha Original</th>
                     <th style={{padding:'8px',textAlign:'left'}}>Actividad</th>
+                    <th style={{padding:'8px',textAlign:'left'}}>Expediente/Caso</th>
                     <th style={{padding:'8px',textAlign:'center'}}>Rezago</th>
                     <th style={{padding:'8px',textAlign:'center'}}>Tiempo Invertido</th>
                     <th style={{padding:'8px',textAlign:'center'}}>Sesiones</th>
                 </tr></thead>
                 <tbody>
                   {reportData.pending.length === 0 ? (
-                      <tr><td colSpan="5" style={{padding:'16px',textAlign:'center',color:colors.textMuted,fontStyle:'italic'}}>No hay actividades pendientes.</td></tr>
+                      <tr><td colSpan="7" style={{padding:'16px',textAlign:'center',color:colors.textMuted,fontStyle:'italic'}}>No hay actividades pendientes.</td></tr>
                   ) : (
-                      reportData.pending.map(t => {
+                      reportData.pending.map((t, idx) => {
                           const dur = (t.sessions || []).reduce((a, s) => a + ((s.end ? new Date(s.end) : new Date()) - new Date(s.start)), 0);
                           const lagDays = Math.floor((new Date() - new Date(t.start)) / (1000 * 60 * 60 * 24));
                           const lagText = lagDays > 0 ? `${lagDays} días` : '0 días';
-                          const desc = `${t.activityTypeName}${t.subtipo ? ' - ' + t.subtipo : ''} ${t.fieldData?.expediente ? 'Exp: ' + t.fieldData.expediente : ''} ${t.fieldData?.informe ? 'Inf: ' + t.fieldData.informe : ''}`;
-                          
+                          const desc = `${t.activityTypeName}${t.subtipo ? ' - ' + t.subtipo : ''}`;
+                          const linkedCase = t.caseUid && cases ? cases.find(c => c.caseUid === t.caseUid) : null;
+                          const linkedBatch = t.batchUid && batches ? batches.find(b => b.batchUid === t.batchUid) : null;
+                          const expParts = [];
+                          if (t.fieldData?.expediente) expParts.push(t.fieldData.expediente);
+                          if (linkedCase?.title) expParts.push(linkedCase.title);
+                          else if (t.caseExternalRefText) expParts.push(t.caseExternalRefText);
+                          if (linkedBatch?.title) expParts.push('Lote: ' + linkedBatch.title);
+                          if (t.fieldData?.informe) expParts.push('Inf: ' + t.fieldData.informe);
+                          const expedienteCaso = expParts.join(' | ');
+
                           return (
                             <tr key={t.id} style={{borderBottom:`1px solid ${colors.border}`}}>
+                                <td style={{padding:'8px', textAlign:'center'}}>{idx + 1}</td>
                                 <td style={{padding:'8px'}}>{new Date(t.start).toLocaleDateString()}</td>
                                 <td style={{padding:'8px'}}>{desc}</td>
+                                <td style={{padding:'8px'}}>{expedienteCaso}</td>
                                 <td style={{padding:'8px', textAlign:'center', color: lagDays > 7 ? colors.danger : colors.textSecondary}}>{lagText}</td>
                                 <td style={{padding:'8px', textAlign:'center'}}>{formatDuration(dur)}</td>
                                 <td style={{padding:'8px', textAlign:'center'}}>{t.sessions ? t.sessions.length : 0}</td>
@@ -6058,7 +6141,7 @@ const App = () => {
   const activeTask = tasks.find(t => t.status === 'in_progress');
   const pendingTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'in_progress' && (new Date(t.end) < new Date() || t.status === 'paused')).sort((a,b) => new Date(a.end) - new Date(b.end));
   const weekRange = getWeekRange(selectedDay);
-  const finishedThisWeek = tasks.filter(t => t.status === 'completed' && new Date(t.end) >= weekRange.start && new Date(t.end) <= weekRange.end);
+  const finishedThisWeek = tasks.filter(t => t.status === 'completed' && new Date(t.end) >= weekRange.start && new Date(t.end) <= weekRange.end).sort((a, b) => new Date(a.start) - new Date(b.start));
 
   // --- CÁLCULO DE FRECUENCIA DE USO (para ordenar tipos y subtipos) ---
   const typeFrequency = useMemo(() => {
