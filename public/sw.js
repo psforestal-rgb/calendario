@@ -1,4 +1,4 @@
-const APP_VERSION = '2026.03.20.1';
+const APP_VERSION = 'dev';
 const CACHE_NAME = `calendario-sinac-${APP_VERSION}`;
 
 const ASSETS_TO_CACHE = [
@@ -48,6 +48,7 @@ self.addEventListener('activate', event => {
       return Promise.all(
         cacheNames.map(cache => {
           if (cache !== CACHE_NAME) {
+            console.log('SW: eliminando cache viejo:', cache);
             return caches.delete(cache);
           }
         })
@@ -61,6 +62,9 @@ self.addEventListener('message', event => {
   if (event.data === 'GET_VERSION') {
     event.ports[0].postMessage({ version: APP_VERSION });
   }
+  if (event.data === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', event => {
@@ -70,8 +74,7 @@ self.addEventListener('fetch', event => {
   if (isNoCache(url)) return;
   if (!url.startsWith('http')) return;
 
-
-  // HTML navigation: network-first (without timeout) to avoid serving stale app shells
+  // HTML navigation: network-first to avoid serving stale app shells
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
