@@ -1871,7 +1871,7 @@ const TaskFormModalContent = ({ isOpen, onClose, task, day, onSave, onDelete, on
    );
 };
 
-const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, onImportBackup, activityTypes, viaticumRates, trashTasks, onExportBackup, onImportBackupJSON, onUploadBackupToStorage, onListStorageBackups, onRestoreFromStorage }) => {
+const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, onImportBackup, activityTypes, viaticumRates, trashTasks, onExportBackup, onImportBackupJSON, onUploadBackupToStorage, onListStorageBackups, onRestoreFromStorage, cases, batches }) => {
   const [activeTab, setActiveTab] = useState('prog_real');
   const [executedStart, setExecutedStart] = useState('');
   const [executedEnd, setExecutedEnd] = useState('');
@@ -6512,7 +6512,7 @@ const App = () => {
       </div>
 
       <TaskFormModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} task={editingTask} day={selectedDay} onSave={handleSaveTask} onDelete={handleDeleteTask} onDuplicate={handleDuplicateTask} tasks={tasks} colors={colors} activityTypes={activityTypes} ppCodes={ppCodes} viaticumRates={viaticumRates} currentMonthBudget={getBudgetStatus(editingTask || { start: selectedDay })} lodgingRates={lodgingRates} sortedActivityTypes={getSortedActivityTypes} getSortedSubtypes={getSortedSubtypes} taskSyncMap={taskSyncMap} lastBackupAt={lastBackupAt} onForceSync={forceSyncTask} cases={cases} batches={batches} />
-      <ReportsModal isOpen={isReportsModalOpen} onClose={() => setIsReportsModalOpen(false)} tasks={tasks} markers={markers} dayOverrides={dayOverrides} colors={colors} onImportBackup={handleImportBackup} activityTypes={activityTypes} viaticumRates={viaticumRates} trashTasks={trashTasks} onExportBackup={exportBackup} onImportBackupJSON={importBackup} onUploadBackupToStorage={uploadBackupToStorage} onListStorageBackups={listStorageBackups} onRestoreFromStorage={restoreFromStorageBackup}/>
+      <ReportsModal isOpen={isReportsModalOpen} onClose={() => setIsReportsModalOpen(false)} tasks={tasks} markers={markers} dayOverrides={dayOverrides} colors={colors} onImportBackup={handleImportBackup} activityTypes={activityTypes} viaticumRates={viaticumRates} trashTasks={trashTasks} onExportBackup={exportBackup} onImportBackupJSON={importBackup} onUploadBackupToStorage={uploadBackupToStorage} onListStorageBackups={listStorageBackups} onRestoreFromStorage={restoreFromStorageBackup} cases={cases} batches={batches}/>
       <CasesModal isOpen={isCasesModalOpen} onClose={() => setIsCasesModalOpen(false)} cases={cases} onSaveCase={saveCaseToDB} onDeleteCase={deleteCaseFromDB} caseLinks={caseLinks} onSaveCaseLink={saveCaseLinkToDB} onDeleteCaseLink={deleteCaseLinkFromDB} colors={colors} holidays={holidayDates} tasks={tasks} Modal={Modal} onSaveTask={saveTaskToDB} />
       <BatchesModal isOpen={isBatchesModalOpen} onClose={() => setIsBatchesModalOpen(false)} batches={batches} cases={cases} tasks={tasks} onSaveBatch={saveBatchToDB} onDeleteBatch={deleteBatchFromDB} colors={colors} Modal={Modal} />
       <DocumentsModal isOpen={isDocumentsModalOpen} onClose={() => setIsDocumentsModalOpen(false)} documents={documents} onUpload={uploadDocumentToDB} onDelete={deleteDocumentFromDB} onReplace={replaceDocumentInDB} colors={colors} isOffline={isOffline} />
