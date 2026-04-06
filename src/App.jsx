@@ -2560,6 +2560,8 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
       efemerides: EFEMERIDES_2026,
       viaticumRates: viaticumRates,
       documents: documents.map(d => ({ docUid: d.docUid, docType: d.docType, periodStart: d.periodStart, periodEnd: d.periodEnd, fileName: d.fileName, downloadURL: d.downloadURL, uploadedAt: d.uploadedAt, fileSize: d.fileSize })),
+      cases: (cases || []).map(c => ({ caseUid: c.caseUid, title: c.title, caseType: c.caseType })),
+      batches: (batches || []).map(b => ({ batchUid: b.batchUid, title: b.title })),
       generatedAt: new Date().toISOString(),
       generatedBy: 'Calendario SINAC - ACOPAC OSRO',
       firebase: {
@@ -3071,6 +3073,8 @@ body{font-family:var(--font);background:var(--surface);color:var(--ink);line-hei
 <script>
 // ========== EMBEDDED DATA ==========
 var DATA = EMBEDDED_JSON;
+if(!DATA.cases)DATA.cases=[];
+if(!DATA.batches)DATA.batches=[];
 var LIVE_CONNECTED = false;
 var ACTIVE_TAB = "calendar";
 
@@ -3173,6 +3177,38 @@ function initFirebase(){
   }
 },function(err){
   console.warn("Settings listener error:",err);
+});
+
+      // Listen to cases collection
+      db.collection("users").doc(fbUid).collection("cases")
+.onSnapshot(function(snapshot){
+  var liveCases=[];
+  snapshot.forEach(function(doc){
+    var d=doc.data();
+    d.id=doc.id;
+    liveCases.push(d);
+  });
+  DATA.cases=liveCases;
+  updateLastSync();
+  refreshCurrentView();
+},function(err){
+  console.warn("Cases listener error:",err);
+});
+
+      // Listen to batches collection
+      db.collection("users").doc(fbUid).collection("batches")
+.onSnapshot(function(snapshot){
+  var liveBatches=[];
+  snapshot.forEach(function(doc){
+    var d=doc.data();
+    d.id=doc.id;
+    liveBatches.push(d);
+  });
+  DATA.batches=liveBatches;
+  updateLastSync();
+  refreshCurrentView();
+},function(err){
+  console.warn("Batches listener error:",err);
 });
 
     }).catch(function(err){
