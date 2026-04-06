@@ -2265,7 +2265,14 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
           const lugar = isNoLugar ? '' : lugarDelDia;
           let actividad = t.activityTypeName;
           if (t.subtipo) actividad += ` - ${t.subtipo}`;
-          const expediente = t.fieldData?.expediente || '';
+          const linkedCase = t.caseUid && cases ? cases.find(c => c.caseUid === t.caseUid) : null;
+          const linkedBatch = t.batchUid && batches ? batches.find(b => b.batchUid === t.batchUid) : null;
+          const expParts = [];
+          if (t.fieldData?.expediente) expParts.push(t.fieldData.expediente);
+          if (linkedCase?.title) expParts.push(linkedCase.title);
+          else if (t.caseExternalRefText) expParts.push(t.caseExternalRefText);
+          if (linkedBatch?.title) expParts.push('Lote: ' + linkedBatch.title);
+          const expediente = expParts.join(' | ');
 
           const row = [
             { v: globalRowNum, s: cellStyleCenter },
@@ -3566,7 +3573,14 @@ function renderReportB(){
       const isFirst=idx===0;
       const isNoLugar=noLugarTypes.includes(parseInt(t.typeId));
       const act=(t.activityTypeName||'')+(t.subtipo?' - '+t.subtipo:'');
-      const exp=t.fieldData?.expediente||'';
+      const linkedCaseHTML=t.caseUid&&DATA.cases?DATA.cases.find(c=>c.caseUid===t.caseUid):null;
+      const linkedBatchHTML=t.batchUid&&DATA.batches?DATA.batches.find(b=>b.batchUid===t.batchUid):null;
+      const expPartsHTML=[];
+      if(t.fieldData?.expediente) expPartsHTML.push(t.fieldData.expediente);
+      if(linkedCaseHTML?.title) expPartsHTML.push(linkedCaseHTML.title);
+      else if(t.caseExternalRefText) expPartsHTML.push(t.caseExternalRefText);
+      if(linkedBatchHTML?.title) expPartsHTML.push('Lote: '+linkedBatchHTML.title);
+      const exp=expPartsHTML.join(' | ');
       html+='<tr>';
       html+='<td>'+globalRowNumHTML+'</td>';
       if(isFirst)html+='<td rowspan="'+rc+'">'+dateStr+'</td>';
