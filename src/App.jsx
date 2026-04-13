@@ -1898,12 +1898,13 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
       };
 
       // ========== CORRECCIÓN PARA ACTIVIDADES REALIZADAS ==========
-      // Hasta: último día hábil anterior (excluyendo hoy)
+      // Hasta: último día de semana anterior (excluyendo hoy, solo saltar fines de semana)
+      // No se excluyen feriados porque puede haber actividades registradas en esos días
       let lastWorkingDay = new Date(today);
       lastWorkingDay.setDate(lastWorkingDay.getDate() - 1);
-      
-      // Retroceder hasta encontrar un día hábil
-      while (!isWorkingDay(lastWorkingDay)) {
+
+      // Retroceder solo fines de semana (no feriados)
+      while (lastWorkingDay.getDay() === 0 || lastWorkingDay.getDay() === 6) {
         lastWorkingDay.setDate(lastWorkingDay.getDate() - 1);
       }
 
@@ -3895,12 +3896,19 @@ function exportPDF_B(){
     const iso=toISO(new Date(t.start));
     const isNoLugar=noLugarTypes.includes(parseInt(t.typeId));
     const v=t.logistics?.viaticos||[];
+    const lc=t.caseUid&&DATA.cases?DATA.cases.find(c=>c.caseUid===t.caseUid):null;
+    const lb=t.batchUid&&DATA.batches?DATA.batches.find(b=>b.batchUid===t.batchUid):null;
+    const ep=[];
+    if(t.fieldData?.expediente)ep.push(t.fieldData.expediente);
+    if(lc?.title)ep.push(lc.title);
+    else if(t.caseExternalRefText)ep.push(t.caseExternalRefText);
+    if(lb?.title)ep.push('Lote: '+lb.title);
     return[
       String(idx+1),
       new Date(t.start).toLocaleDateString('es-CR'),
       isNoLugar?'':getLugarDelDia(iso,[t]),
       (t.activityTypeName||'')+(t.subtipo?' - '+t.subtipo:''),
-      t.fieldData?.expediente||'',
+      ep.join(' | '),
       t.fieldData?.asistentes||'',
       t.logistics?.requiereVehiculo?'X':'',
       t.logistics?.dobleTraccion?'X':'',
@@ -4399,7 +4407,14 @@ CLOSE_SCRIPT_TAG
                                   const isNoLugarHTML = noLugarNoPPTypesHTML.includes(parseInt(t.typeId));
                                   const lugar = isNoLugarHTML ? '' : lugarDelDiaHTML;
                                   const actividad = `${t.activityTypeName}${t.subtipo ? ' - ' + t.subtipo : ''}`;
-                                  const expediente = t.fieldData?.expediente || '';
+                                  const linkedCaseB = t.caseUid && cases ? cases.find(c => c.caseUid === t.caseUid) : null;
+                                  const linkedBatchB = t.batchUid && batches ? batches.find(b => b.batchUid === t.batchUid) : null;
+                                  const expPartsB = [];
+                                  if (t.fieldData?.expediente) expPartsB.push(t.fieldData.expediente);
+                                  if (linkedCaseB?.title) expPartsB.push(linkedCaseB.title);
+                                  else if (t.caseExternalRefText) expPartsB.push(t.caseExternalRefText);
+                                  if (linkedBatchB?.title) expPartsB.push('Lote: ' + linkedBatchB.title);
+                                  const expediente = expPartsB.join(' | ');
                                   const acomp = t.fieldData?.asistentes || '';
 
                                   return (
