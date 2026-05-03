@@ -2550,7 +2550,8 @@ const ReportsModal = ({ isOpen, onClose, tasks, markers, dayOverrides, colors, o
       id: t.id, typeId: t.typeId, activityTypeName: t.activityTypeName || '', subtipo: t.subtipo || '',
       start: t.start, end: t.end, status: t.status || 'pending', observations: t.observations || '',
       fieldData: t.fieldData || {}, logistics: t.logistics || {}, sessions: t.sessions || [],
-      caseExternalRefText: t.caseExternalRefText || null, caseUid: t.caseUid || null
+      caseExternalRefText: t.caseExternalRefText || null, caseUid: t.caseUid || null,
+      batchUid: t.batchUid || null
     }));
     const embeddedData = {
       tasks: allTasks,
@@ -4216,19 +4217,23 @@ CLOSE_SCRIPT_TAG
 </body>
 </html>`;
 
-    // Replace placeholders
+    // Replace placeholders — use function replacements to avoid $-pattern corruption in JSON data
     const dataJSON = JSON.stringify(embeddedData);
+    const generatedDate = new Date().toLocaleDateString('es-CR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     const finalHTML = viewerHTML
-      .replace('EMBEDDED_JSON', dataJSON)
+      .replace('EMBEDDED_JSON', () => dataJSON)
       .replace(/CLOSE_SCRIPT_TAG/g, '</' + 'script>')
-      .replace('GENERATED_DATE', new Date().toLocaleDateString('es-CR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
+      .replace('GENERATED_DATE', () => generatedDate);
 
     const blob = new Blob([finalHTML], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
+    link.href = url;
     link.download = `visor_programacion_${new Date().toISOString().slice(0,10)}.html`;
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(link.href);
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const inputStyle = {width:'100%',backgroundColor:colors.bgPrimary,border:`1px solid ${colors.border}`,borderRadius:'6px',padding:'8px',color:colors.textPrimary,fontSize:'13px'};
