@@ -5204,6 +5204,7 @@ const App = () => {
   const [syncStatus, setSyncStatus] = useState('idle'); // 'idle', 'saving', 'saved', 'error'
   const [lastSyncTime, setLastSyncTime] = useState(null);
   const syncTimerRef = useRef(null);
+  const settingsFromFirestore = useRef(false);
 
   // --- TRACKING POR TAREA (estilo WhatsApp) ---
   // taskSyncMap: {taskId: {status: 'synced'|'saving'|'error', at: Date}}
@@ -5398,6 +5399,7 @@ const App = () => {
     const settingsRef = doc(db, 'users', user.uid, 'data', 'calendar_settings');
     const unsubscribeSettings = onSnapshot(settingsRef, (docSnap) => {
         if (docSnap.exists()) {
+            settingsFromFirestore.current = true;
             const data = docSnap.data();
             setDayOverrides(data.overrides || {});
             setResumeTaskId(data.resumeTaskId || null);
@@ -5543,6 +5545,10 @@ const App = () => {
   // Guardar Configs cuando cambian
   useEffect(() => {
       if(!user) return;
+      if(settingsFromFirestore.current) {
+          settingsFromFirestore.current = false;
+          return;
+      }
       markSaving();
       const db = getFirestore();
       const settingsRef = doc(db, 'users', user.uid, 'data', 'calendar_settings');
