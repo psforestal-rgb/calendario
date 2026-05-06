@@ -5205,6 +5205,7 @@ const App = () => {
   const [lastSyncTime, setLastSyncTime] = useState(null);
   const syncTimerRef = useRef(null);
   const settingsFromFirestore = useRef(false);
+  const settingsInitialized = useRef(false);
 
   // --- TRACKING POR TAREA (estilo WhatsApp) ---
   // taskSyncMap: {taskId: {status: 'synced'|'saving'|'error', at: Date}}
@@ -5325,6 +5326,10 @@ const App = () => {
 
   useEffect(() => {
     if (!user) return;
+    // Resetear refs de configuración al cambiar de usuario para evitar guardar
+    // valores por defecto antes de recibir el primer snapshot del nuevo usuario.
+    settingsInitialized.current = false;
+    settingsFromFirestore.current = false;
     const db = getFirestore();
 
     const tasksQuery = query(collection(db, 'users', user.uid, 'tasks'));
@@ -5398,6 +5403,7 @@ const App = () => {
 
     const settingsRef = doc(db, 'users', user.uid, 'data', 'calendar_settings');
     const unsubscribeSettings = onSnapshot(settingsRef, (docSnap) => {
+        settingsInitialized.current = true;
         if (docSnap.exists()) {
             settingsFromFirestore.current = true;
             const data = docSnap.data();
@@ -5545,6 +5551,9 @@ const App = () => {
   // Guardar Configs cuando cambian
   useEffect(() => {
       if(!user) return;
+      // Esperar a que llegue el primer snapshot de Firestore antes de guardar,
+      // para no sobreescribir la configuración real del usuario con los defaults.
+      if(!settingsInitialized.current) return;
       if(settingsFromFirestore.current) {
           settingsFromFirestore.current = false;
           return;
