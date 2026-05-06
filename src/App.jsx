@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   ChevronLeft, ChevronRight, Clock, CheckCircle, PauseCircle, PlayCircle, 
   Plus, X, Menu, Trash2, Filter, AlertTriangle, Settings, Edit2,
@@ -931,7 +931,88 @@ const SyncIndicator = ({ taskId, taskSyncMap, lastBackupAt, onForceSync, colors,
   );
 };
 
-const CalendarCell = ({ day, tasks, currentDate, dayTag, markers, onToggleTag, onSelectDay, onAddTask, onEditTask, isSelected, onDrop, colors, activityTypes, isMonthOverBudget, viaticumRates, taskSyncMap, lastBackupAt, onForceSync, isMobile, cases }) => {
+// --- HELPERS A NIVEL DE MÓDULO (evitan que App se re-renderice cada segundo) ---
+function _getSeriesDuration(tasks, taskId, seriesId, now) {
+  if (!seriesId && !taskId) return 0;
+  const linked = tasks.filter(t => (t.seriesId === seriesId) || (t.id === taskId));
+  return linked.reduce((total, t) => {
+    if (!t.sessions) return total;
+    return total + t.sessions.reduce((acc, s) => {
+      const start = new Date(s.start);
+      const end = s.end ? new Date(s.end) : now;
+      return acc + (end - start);
+    }, 0);
+  }, 0);
+}
+
+function _getCurrentSessionDuration(task, now) {
+  if (!task || !task.sessions || task.status !== 'in_progress') return 0;
+  const last = task.sessions[task.sessions.length - 1];
+  if (!last || last.end) return 0;
+  return now - new Date(last.start);
+}
+
+function _getSeriesSessionCount(tasks, taskId, seriesId) {
+  const linked = tasks.filter(t => (t.seriesId === seriesId) || (t.id === taskId));
+  return linked.reduce((count, t) => count + (t.sessions?.length || 0), 0);
+}
+
+// Componente de reloj en vivo — tiene su propio estado de tiempo para no contaminar App
+const LiveClock = React.memo(({ colors }) => {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const target = new Date(now);
+  target.setHours(16, 0, 0, 0);
+  const diff = target - now;
+  const countdown = diff <= 0 ? 'Salida cumplida' : `Faltan ${Math.floor(diff / 3600000)}h ${Math.floor((diff % 3600000) / 60000)}m`;
+
+  return (
+    <div style={{marginTop:'8px',paddingLeft:'8px',borderLeft:`3px solid ${colors.accent}`}}>
+      <div style={{fontSize:'28px',fontFamily:'monospace',color:colors.success,fontWeight:'bold'}}>
+        {now.toLocaleTimeString()}
+      </div>
+      <div style={{fontSize:'12px',color:colors.textSecondary,marginTop:'4px',display:'flex',alignItems:'center',gap:'4px'}}>
+        <LogOut size={12}/> {countdown}
+      </div>
+    </div>
+  );
+});
+
+// Componente de duración de sesión en vivo — actualiza cada segundo sin re-renderizar App
+const LiveSessionInfo = React.memo(({ activeTask, tasks, colors }) => {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const sessionDuration = _getCurrentSessionDuration(activeTask, now);
+  const seriesDuration = _getSeriesDuration(tasks, activeTask.id, activeTask.seriesId, now);
+  const sessionCount = _getSeriesSessionCount(tasks, activeTask.id, activeTask.seriesId);
+
+  return (
+    <div style={{marginTop:'12px',display:'flex',flexDirection:'column',gap:'6px',fontSize:'12px',color:colors.textMuted}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}} title="Tiempo Sesión Actual">
+        <span>Sesion Actual:</span>
+        <span style={{color:colors.success,fontWeight:'bold',fontSize:'13px'}}>{formatDuration(sessionDuration)}</span>
+      </div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}} title="Tiempo Acumulado Total">
+        <span>Total Acumulado:</span>
+        <span style={{color:colors.accent,fontWeight:'bold',fontSize:'13px'}}>{formatDuration(seriesDuration)}</span>
+      </div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}} title="Total Sesiones">
+        <span>Sesiones:</span>
+        <span style={{fontWeight:'600'}}>{sessionCount}</span>
+      </div>
+    </div>
+  );
+});
+
+const CalendarCell = React.memo(({ day, tasks, currentDate, dayTag, markers, onToggleTag, onSelectDay, onAddTask, onEditTask, isSelected, onDrop, colors, activityTypes, isMonthOverBudget, viaticumRates, taskSyncMap, lastBackupAt, onForceSync, isMobile, cases }) => {
   const dayStr = toISODateString(day);
   const dayTasks = tasks
     .filter(t => toISODateString(new Date(t.start)) === dayStr)
@@ -1054,7 +1135,18 @@ const CalendarCell = ({ day, tasks, currentDate, dayTag, markers, onToggleTag, o
       </div>
     </div>
   );
-};
+}, (prev, next) => (
+  prev.day.getTime() === next.day.getTime() &&
+  prev.tasks === next.tasks &&
+  prev.isSelected === next.isSelected &&
+  prev.dayTag === next.dayTag &&
+  prev.colors === next.colors &&
+  prev.isMonthOverBudget === next.isMonthOverBudget &&
+  prev.taskSyncMap === next.taskSyncMap &&
+  prev.lastBackupAt === next.lastBackupAt &&
+  prev.isMobile === next.isMobile &&
+  prev.cases === next.cases
+));
 
 // --- COMPONENTE DE SELECCIÓN CON BÚSQUEDA (AUTOCOMPLETE) ---
 const SearchableSelect = ({ options, value, onChange, placeholder, colors, renderOption, getLabel, getValue }) => {
@@ -6019,36 +6111,9 @@ const App = () => {
 
   const handleImportBackup = (importedTasks) => { importedTasks.forEach(task => saveTaskToDB(task)); };
 
-  // --- HELPER FOR ACTIVE TASK DURATION ---
-  const getSeriesDuration = (taskId, seriesId, now) => {
-      if (!seriesId && !taskId) return 0;
-      const linkedTasks = tasks.filter(t => (t.seriesId === seriesId) || (t.id === taskId));
-      return linkedTasks.reduce((total, t) => {
-          if (!t.sessions) return total;
-          return total + t.sessions.reduce((acc, s) => {
-              const start = new Date(s.start);
-              const end = s.end ? new Date(s.end) : now; 
-              return acc + (end - start);
-          }, 0);
-      }, 0);
-  };
-  
-  const getSeriesSessionCount = (taskId, seriesId) => {
-      const linkedTasks = tasks.filter(t => (t.seriesId === seriesId) || (t.id === taskId));
-      return linkedTasks.reduce((count, t) => count + (t.sessions?.length || 0), 0);
-  };
-  
-  const getCurrentSessionDuration = (task, now) => {
-      if (!task || !task.sessions || task.status !== 'in_progress') return 0;
-      const lastSession = task.sessions[task.sessions.length - 1];
-      if (!lastSession || lastSession.end) return 0; 
-      return now - new Date(lastSession.start);
-  };
-
   // --- ESTADO DEL TEMA ---
   const [isDarkMode, setIsDarkMode] = useState(true);
   const colors = isDarkMode ? DARK_THEME : LIGHT_THEME;
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
   const [scheduleAlert, setScheduleAlert] = useState(null);
   const alertedTasks = useRef(new Set());
@@ -6069,47 +6134,51 @@ const App = () => {
   const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
 
-  useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => { const handleResize = () => setWindowWidth(window.innerWidth); window.addEventListener('resize', handleResize); return () => window.removeEventListener('resize', handleResize); }, []);
 
   // === AUTO-PAUSA A LAS 16:00 ===
   const autoPausedToday = useRef(false);
   useEffect(() => {
-    const now = currentTime;
-    const h = now.getHours();
-    const m = now.getMinutes();
-    // Reset flag at midnight (new day)
-    if (h === 0 && m === 0) autoPausedToday.current = false;
-    // At 16:00 (or shortly after), pause any in_progress task
-    if (h >= 16 && !autoPausedToday.current) {
-      const active = tasks.find(t => t.status === 'in_progress');
-      if (active) {
-        const pauseTime = new Date(now);
-        pauseTime.setHours(16, 0, 0, 0);
-        // Use the exact 16:00 timestamp if we're within 2 minutes of 16:00, otherwise use now
-        const endTimestamp = (h === 16 && m < 2) ? pauseTime.toISOString() : now.toISOString();
-        const sessions = [...(active.sessions || [])];
-        if (sessions.length > 0 && !sessions[sessions.length - 1].end) {
-          sessions[sessions.length - 1].end = endTimestamp;
+    const checkAutoPause = () => {
+      const now = new Date();
+      const h = now.getHours();
+      const m = now.getMinutes();
+      if (h === 0 && m === 0) autoPausedToday.current = false;
+      if (h >= 16 && !autoPausedToday.current) {
+        const active = tasks.find(t => t.status === 'in_progress');
+        if (active) {
+          const pauseTime = new Date(now);
+          pauseTime.setHours(16, 0, 0, 0);
+          const endTimestamp = (h === 16 && m < 2) ? pauseTime.toISOString() : now.toISOString();
+          const sessions = [...(active.sessions || [])];
+          if (sessions.length > 0 && !sessions[sessions.length - 1].end) {
+            sessions[sessions.length - 1].end = endTimestamp;
+          }
+          saveTaskToDB({ ...active, status: 'paused', sessions });
+          autoPausedToday.current = true;
+        } else {
+          autoPausedToday.current = true;
         }
-        saveTaskToDB({ ...active, status: 'paused', sessions });
-        autoPausedToday.current = true;
-      } else {
-        // No active task at 16:00, mark as handled so we don't keep checking
-        autoPausedToday.current = true;
       }
-    }
-  }, [currentTime, tasks]);
+    };
+    const interval = setInterval(checkAutoPause, 30000);
+    return () => clearInterval(interval);
+  }, [tasks]);
   
   useEffect(() => {
-    const now = new Date();
-    const pending = tasks.find(t => {
-      if (t.status !== 'pending' || alertedTasks.current.has(t.id)) return false;
-      const start = new Date(t.start);
-      return Math.abs(now - start) < 60000;
-    });
-    if (pending) { alertedTasks.current.add(pending.id); setScheduleAlert(pending); }
-  }, [currentTime, tasks]);
+    const checkScheduleAlert = () => {
+      const now = new Date();
+      const pending = tasks.find(t => {
+        if (t.status !== 'pending' || alertedTasks.current.has(t.id)) return false;
+        const start = new Date(t.start);
+        return Math.abs(now - start) < 60000;
+      });
+      if (pending) { alertedTasks.current.add(pending.id); setScheduleAlert(pending); }
+    };
+    const interval = setInterval(checkScheduleAlert, 30000);
+    checkScheduleAlert();
+    return () => clearInterval(interval);
+  }, [tasks]);
 
   useEffect(() => {
     if (!searchQuery && filterType === 'all' && !filterStartDate && !filterEndDate) { setSearchResults(null); return; }
@@ -6209,15 +6278,14 @@ const App = () => {
     setPausedByNewTask(null); saveSettingsToDB({ resumeTaskId: null }); setShowResumePrompt(false);
   };
 
-  const isSelectedToday = toISODateString(selectedDay) === toISODateString(new Date()); 
-  const getExitCountdown = () => { const target = new Date(); target.setHours(16, 0, 0, 0); const diff = target - currentTime; if (diff <= 0) return "Salida cumplida"; return `Faltan ${Math.floor(diff / 3600000)}h ${Math.floor((diff % 3600000) / 60000)}m`; };
+  const isSelectedToday = toISODateString(selectedDay) === toISODateString(new Date());
 
-  const filteredTasks = tasks.filter(t => { if (filterType !== 'all' && t.typeId !== parseInt(filterType)) return false; return true; });
-  const tasksForDay = filteredTasks.filter(t => toISODateString(new Date(t.start)) === toISODateString(selectedDay)).sort((a,b) => new Date(a.start) - new Date(b.start));
-  const activeTask = tasks.find(t => t.status === 'in_progress');
-  const pendingTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'in_progress' && (new Date(t.end) < new Date() || t.status === 'paused')).sort((a,b) => new Date(a.end) - new Date(b.end));
-  const weekRange = getWeekRange(selectedDay);
-  const finishedThisWeek = tasks.filter(t => t.status === 'completed' && new Date(t.end) >= weekRange.start && new Date(t.end) <= weekRange.end).sort((a, b) => new Date(a.start) - new Date(b.start));
+  const filteredTasks = useMemo(() => tasks.filter(t => filterType === 'all' || t.typeId === parseInt(filterType)), [tasks, filterType]);
+  const tasksForDay = useMemo(() => filteredTasks.filter(t => toISODateString(new Date(t.start)) === toISODateString(selectedDay)).sort((a,b) => new Date(a.start) - new Date(b.start)), [filteredTasks, selectedDay]);
+  const activeTask = useMemo(() => tasks.find(t => t.status === 'in_progress'), [tasks]);
+  const pendingTasks = useMemo(() => tasks.filter(t => t.status !== 'completed' && t.status !== 'in_progress' && (new Date(t.end) < new Date() || t.status === 'paused')).sort((a,b) => new Date(a.end) - new Date(b.end)), [tasks]);
+  const weekRange = useMemo(() => getWeekRange(selectedDay), [selectedDay]);
+  const finishedThisWeek = useMemo(() => tasks.filter(t => t.status === 'completed' && new Date(t.end) >= weekRange.start && new Date(t.end) <= weekRange.end).sort((a, b) => new Date(a.start) - new Date(b.start)), [tasks, weekRange]);
 
   // --- CÁLCULO DE FRECUENCIA DE USO (para ordenar tipos y subtipos) ---
   const typeFrequency = useMemo(() => {
@@ -6257,17 +6325,17 @@ const App = () => {
     width:'140px', minWidth: '100px'
   };
   
-  // Budget Calculation Helper for Main View
-  const getMonthBudgetState = (monthIndex) => {
-      const limit = monthlyBudgets[monthIndex] !== undefined ? monthlyBudgets[monthIndex] : DEFAULT_MONTHLY_BUDGET;
+  // Budget state memoized por mes para evitar recalcular en cada render
+  const monthBudgetStates = useMemo(() => {
+    const states = {};
+    for (let m = 0; m < 12; m++) {
+      const limit = monthlyBudgets[m] !== undefined ? monthlyBudgets[m] : DEFAULT_MONTHLY_BUDGET;
       let spent = 0;
-      tasks.forEach(t => {
-          if(new Date(t.start).getMonth() === monthIndex) {
-              spent += calculateTaskCost(t, viaticumRates);
-          }
-      });
-      return { isOver: spent > limit, remaining: limit - spent };
-  };
+      tasks.forEach(t => { if (new Date(t.start).getMonth() === m) spent += calculateTaskCost(t, viaticumRates); });
+      states[m] = { isOver: spent > limit, remaining: limit - spent };
+    }
+    return states;
+  }, [tasks, monthlyBudgets, viaticumRates]);
 
   // Detectar si es mobile (reactivo al redimensionar)
   const isMobile = windowWidth <= 768;
@@ -6347,12 +6415,7 @@ const App = () => {
                      {isSelectedToday && <Clock size={24}/>}
                      {selectedDay.toLocaleDateString('es-CR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                   </h3>
-                  {isSelectedToday && (
-                     <div style={{marginTop:'8px',paddingLeft:'8px',borderLeft:`3px solid ${colors.accent}`}}>
-                        <div style={{fontSize:'28px',fontFamily:'monospace',color:colors.success,fontWeight:'bold'}}>{currentTime.toLocaleTimeString()}</div>
-                        <div style={{fontSize:'12px',color:colors.textSecondary,marginTop:'4px',display:'flex',alignItems:'center',gap:'4px'}}><LogOut size={12}/> {getExitCountdown()}</div>
-                     </div>
-                  )}
+                  {isSelectedToday && <LiveClock colors={colors}/>}
                </div>
                
                {/* ========== SESIÓN DE USUARIO ========== */}
@@ -6445,20 +6508,7 @@ const App = () => {
                           </div>
                         </div>
                         <div style={{fontWeight:'bold',color:colors.textPrimary,fontSize:'15px',marginTop:'4px'}}>{activeTask.subtipo || activityTypes.find(at=>at.id===activeTask.typeId)?.name || 'Actividad'}</div>
-                        <div style={{marginTop:'12px',display:'flex',flexDirection:'column',gap:'6px',fontSize:'12px',color:colors.textMuted}}>
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}} title="Tiempo Sesión Actual">
-                            <span>Sesion Actual:</span>
-                            <span style={{color:colors.success,fontWeight:'bold',fontSize:'13px'}}>{formatDuration(getCurrentSessionDuration(activeTask, currentTime))}</span>
-                          </div>
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}} title="Tiempo Acumulado Total">
-                            <span>Total Acumulado:</span>
-                            <span style={{color:colors.accent,fontWeight:'bold',fontSize:'13px'}}>{formatDuration(getSeriesDuration(activeTask.id, activeTask.seriesId, currentTime))}</span>
-                          </div>
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}} title="Total Sesiones">
-                            <span>Sesiones:</span>
-                            <span style={{fontWeight:'600'}}>{getSeriesSessionCount(activeTask.id, activeTask.seriesId)}</span>
-                          </div>
-                        </div>
+                        <LiveSessionInfo activeTask={activeTask} tasks={tasks} colors={colors}/>
                         <button onClick={()=>{setEditingTask(activeTask);setIsTaskModalOpen(true);}} style={{marginTop:'10px',width:'100%',fontSize:'13px',padding:'8px',borderRadius:'6px',backgroundColor:colors.bgTertiary,color:colors.textSecondary,border:`1px solid ${colors.border}`,cursor:'pointer',fontWeight:'600',minHeight:'36px'}}>Gestionar</button>
                       </div>
                     </>
@@ -6573,7 +6623,7 @@ const App = () => {
                          onDrop={handleDrop}
                          colors={colors}
                          activityTypes={activityTypes}
-                         isMonthOverBudget={getMonthBudgetState(day.getMonth()).isOver}
+                         isMonthOverBudget={monthBudgetStates[day.getMonth()].isOver}
                          viaticumRates={viaticumRates}
                          taskSyncMap={taskSyncMap}
                          lastBackupAt={lastBackupAt}
