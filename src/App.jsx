@@ -13,7 +13,7 @@ import XLSX from 'xlsx-js-style';
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, linkWithPopup, signInWithPopup, signOut } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, query, writeBatch, where, getDocs, getFirestore } from 'firebase/firestore';
 import { getStorage, ref, uploadString, uploadBytes, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
 import { CasesModal, CaseLinkSection } from './CasesManager.jsx';
@@ -5288,6 +5288,8 @@ const App = () => {
   const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
   const [markers] = useState([...PAYMENTS_2026, ...HOLIDAYS_CR_2026, ...EFEMERIDES_2026, ...MOON_PHASES_2026]);
   const [user, setUser] = useState(null);
+  const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
+  const [googleLinkError, setGoogleLinkError] = useState(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [dayOverrides, setDayOverrides] = useState({}); 
   const [resumeTaskId, setResumeTaskId] = useState(null);
@@ -5632,6 +5634,58 @@ const App = () => {
   const dismissLocalBackup = () => {
     setLocalBackupAvailable(false);
     setLocalBackupInfo(null);
+  };
+
+  // --- GOOGLE SIGN-IN / VINCULAR CUENTA ---
+  const handleGoogleSignIn = async () => {
+    setIsLinkingGoogle(true);
+    setGoogleLinkError(null);
+    const auth = getAuth();
+    const provider = new GoogleAuthProvider();
+    try {
+      if (auth.currentUser && auth.currentUser.isAnonymous) {
+        // Guardar backup local antes de intentar vincular
+        try {
+          const backupData = {
+            tasks, trash: trashTasks,
+            settings: { activityTypes, ppCodes, viaticumRates, monthlyBudgets, lodgingRates, dayOverrides, isBudgetLocked, isViaticosLocked, isTypesLocked, isPPLocked },
+            exportedAt: new Date().toISOString(), uid: auth.currentUser.uid
+          };
+          localStorage.setItem('calendario_local_backup', JSON.stringify(backupData));
+        } catch(e) {}
+
+        try {
+          // Intentar vincular cuenta anónima con Google (preserva UID y todos los datos)
+          await linkWithPopup(auth.currentUser, provider);
+          // Éxito: el UID queda permanente vinculado a la cuenta Google
+        } catch (linkError) {
+          if (linkError.code === 'auth/credential-already-in-use' || linkError.code === 'auth/email-already-in-use') {
+            // La cuenta de Google ya está vinculada a otro UID anterior
+            // Iniciar sesión con Google directamente (el sistema de backup detectará el cambio de UID)
+            await signInWithPopup(auth, provider);
+          } else {
+            throw linkError;
+          }
+        }
+      } else {
+        await signInWithPopup(auth, provider);
+      }
+    } catch (error) {
+      if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
+        setGoogleLinkError('No se pudo iniciar sesión con Google. Intenta de nuevo.');
+        console.error('Google sign-in error:', error);
+      }
+    } finally {
+      setIsLinkingGoogle(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    if (!confirm('¿Cerrar sesión? Tus datos están guardados en Firebase y seguirán disponibles cuando vuelvas a iniciar sesión con la misma cuenta de Google.')) return;
+    try {
+      const auth = getAuth();
+      await signOut(auth);
+    } catch (e) { console.error('Sign out error:', e); }
   };
 
   // Guardar Configs cuando cambian
@@ -6421,8 +6475,39 @@ const App = () => {
                {/* ========== SESIÓN DE USUARIO ========== */}
                {user && (
                  <div style={{padding:'10px',backgroundColor:colors.bgPrimary,borderRadius:'8px',border:`1px solid ${colors.border}`,marginBottom:'16px', fontSize:'11px', color:colors.textMuted}}>
-                    <div style={{display:'flex',alignItems:'center',gap:'6px'}}><div style={{width:'8px',height:'8px',borderRadius:'50%',backgroundColor:colors.success}}></div> <span style={{fontWeight:'600'}}>Sesión Activa</span></div>
-                    <div style={{marginTop:'4px', fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',fontSize:'10px'}}>ID: {user.uid}</div>
+                   {user.isAnonymous ? (
+                     <>
+                       <div style={{display:'flex',alignItems:'center',gap:'6px',marginBottom:'8px'}}>
+                         <div style={{width:'8px',height:'8px',borderRadius:'50%',backgroundColor:colors.warning}}></div>
+                         <span style={{fontWeight:'600',color:colors.warning}}>Sesión temporal</span>
+                       </div>
+                       <p style={{margin:'0 0 8px 0',fontSize:'10px',lineHeight:'1.5',color:colors.textSecondary}}>
+                         Los datos pueden perderse si cambias de dispositivo o limpias el navegador.
+                       </p>
+                       {googleLinkError && <p style={{margin:'0 0 6px 0',fontSize:'10px',color:colors.danger}}>{googleLinkError}</p>}
+                       <button
+                         onClick={handleGoogleSignIn}
+                         disabled={isLinkingGoogle}
+                         style={{width:'100%',padding:'8px',backgroundColor:'#4285F4',color:'#fff',border:'none',borderRadius:'6px',cursor:isLinkingGoogle?'wait':'pointer',fontWeight:'bold',fontSize:'11px',display:'flex',alignItems:'center',justifyContent:'center',gap:'6px',opacity:isLinkingGoogle?0.7:1}}
+                       >
+                         <svg width="14" height="14" viewBox="0 0 48 48"><path fill="#fff" d="M44.5 20H24v8.5h11.8C34.7 33.9 30.1 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-22 0-1.3-.2-2.7-.5-4z"/></svg>
+                         {isLinkingGoogle ? 'Conectando...' : 'Proteger con cuenta Google'}
+                       </button>
+                     </>
+                   ) : (
+                     <>
+                       <div style={{display:'flex',alignItems:'center',gap:'6px',marginBottom:'4px'}}>
+                         {user.photoURL && <img src={user.photoURL} alt="" style={{width:'20px',height:'20px',borderRadius:'50%',flexShrink:0}}/>}
+                         <div style={{width:'8px',height:'8px',borderRadius:'50%',backgroundColor:colors.success,flexShrink:0}}></div>
+                         <span style={{fontWeight:'600',color:colors.success}}>Google</span>
+                       </div>
+                       <div style={{fontSize:'11px',color:colors.textPrimary,fontWeight:'600',marginBottom:'2px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.displayName || user.email}</div>
+                       <div style={{fontSize:'10px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:'8px'}}>{user.email}</div>
+                       <button onClick={handleSignOut} style={{width:'100%',padding:'5px',backgroundColor:'transparent',color:colors.textMuted,border:`1px solid ${colors.border}`,borderRadius:'5px',cursor:'pointer',fontSize:'10px'}}>
+                         Cerrar sesión
+                       </button>
+                     </>
+                   )}
                  </div>
                )}
 
